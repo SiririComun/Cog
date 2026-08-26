@@ -1,0 +1,9 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary & build files
+*.tmp
+*.log
+.DS_Store
