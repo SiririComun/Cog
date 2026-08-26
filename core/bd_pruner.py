@@ -1,15 +1,15 @@
 import json
-import re
 
 
 class BlockDesignPruner:
-    """Prunes noisy default Vivado Zynq PS7/MIO boilerplate from .bd files (saving ~80% tokens)."""
+    """Prunes noisy default Vivado Zynq PS7/MIO boilerplate from .bd files (saving ~85% tokens)."""
 
-    # Noise parameter prefixes to strip from Processing System blocks
+    # Extended noise parameter prefixes to strip from Processing System blocks
     PS_NOISE_PREFIXES = (
         "PCW_MIO_", "PCW_NOR_", "PCW_NAND_", "PCW_SMC_", "PCW_DDR_",
-        "PCW_PACKAGE_DDR_", "PCW_UIPARAM_DDR_CLOCK_", "PCW_UIPARAM_DDR_DQS_",
-        "PCW_UIPARAM_DDR_DQ_", "PCW_ACT_"
+        "PCW_PACKAGE_DDR_", "PCW_UIPARAM_DDR_", "PCW_ACT_", "PCW_EN_EMIO_",
+        "PCW_MIO_TREE_", "PCW_GPIO_MIO_", "PCW_EN_CLKTRIG", "PCW_EN_RST",
+        "PCW_TTC0_CLK", "PCW_TTC1_CLK", "PCW_WDT_PERIPHERAL_", "PCW_TRACE_"
     )
 
     @classmethod
@@ -21,7 +21,7 @@ class BlockDesignPruner:
 
         design = data.get("design", {})
 
-        # 1. Prune components
+        # Prune components
         components = design.get("components", {})
         for comp_name, comp_data in components.items():
             if not isinstance(comp_data, dict):

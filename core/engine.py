@@ -35,7 +35,7 @@ class CogEngine:
         self.config_file = self.repo_root / "cog.conf"
 
     def parse_config(self):
-        """Parses cog.conf for target files and output destination."""
+        """Parses cog.conf for target files and output destination, deduplicating paths."""
         targets = []
         output_file = self.repo_root / "context" / "summary.txt"
 
@@ -49,7 +49,10 @@ class CogEngine:
                         output_file = self.repo_root / line.split(":", 1)[1].strip()
                     else:
                         targets.append(line)
-        return targets, output_file
+
+        # Automatically deduplicate targets while preserving insertion order
+        unique_targets = list(dict.fromkeys(targets))
+        return unique_targets, output_file
 
     def generate_full_context(self):
         """Default Mode: Generates the complete, token-compacted repository context."""
@@ -99,16 +102,12 @@ class CogEngine:
         TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
 
     def dispatch(self, args: list):
-        """
-        Scalable CLI Command Dispatcher.
-        Handles default execution and provides clean routing hooks for future subcommands.
-        """
+        """Scalable CLI Command Dispatcher."""
         command = args[0].upper() if args else "FULL"
 
         if command in ("FULL", "ALL"):
             self.generate_full_context()
         else:
-            # Fallback for unrecognized commands: treat as default full run
             self.generate_full_context()
 
 
