@@ -1,0 +1,49 @@
+name: Cog Engine CI & Validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-engine:
+    name: Verify Engine (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run Cog Self-Test
+        run: |
+          chmod +x Ctx
+          
+          # Create temporary test config
+          echo "OUTPUT: test_summary.txt" > cog.conf
+          echo "README.md" >> cog.conf
+          echo "LICENSE" >> cog.conf
+          
+          # Run Ctx
+          ./Ctx
+          
+          # Verify output exists and is non-empty
+          if [ ! -s "test_summary.txt" ]; then
+            echo "❌ ERROR: Cog failed to generate output!" >&2
+            exit 1
+          fi
+          
+          echo "✅ Cog self-test passed on Python ${{ matrix.python-version }}!"
+          rm -f cog.conf test_summary.txt
