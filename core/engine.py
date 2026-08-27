@@ -23,6 +23,7 @@ from ipynb_clean import NotebookCleaner
 from token_meter import TokenMeter
 from ignore_matcher import IgnoreFilter
 from scaffold import ConfigScaffolder
+from doctor import DiagnosticDoctor
 
 
 class CogEngine:
@@ -375,7 +376,10 @@ class CogEngine:
         print("     ./Cog/Ctx")
         print("=" * 68 + "\n")
     
-    def handle_update(self, args: List[str]):
+    def handle_check(self, args: List[str]):
+        """Executes repository diagnostics and token health checks."""
+        doctor = DiagnosticDoctor(self)
+        doctor.print_diagnostic_report()
         """Non-destructively synchronizes existing configuration with new repository files."""
         scaffolder = ConfigScaffolder(self.repo_root)
         success, conf_path, newly_added, missing = scaffolder.update(self.config_file)
@@ -439,6 +443,8 @@ class CogEngine:
             self.handle_init(filtered_args[1:])
         elif subcommand in ("update", "sync"):
             self.handle_update(filtered_args[1:])
+        elif subcommand in ("check", "doctor"):
+            self.handle_check(filtered_args[1:])
         elif subcommand in ("full", "all"):
             self.generate_full_context()
         else:
