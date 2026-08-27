@@ -27,7 +27,7 @@ from doctor import DiagnosticDoctor
 from xdc_clean import XdcCleaner
 from tcl_clean import TclCleaner
 from c_slicer import CSlicer
-
+from diff_slicer import DiffSlicer
 
 class CogEngine:
     SYNTAX_MAP = {
@@ -509,6 +509,18 @@ class CogEngine:
 
         TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
 
+    def handle_diff(self, args: Optional[List[str]] = None):
+        """Generates a working-tree diff and modified files context payload."""
+        output_file = self.repo_root / "context" / "diff_summary.txt"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        final_output, raw_bytes = DiffSlicer.generate_diff_context(self)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(final_output)
+
+        TokenMeter.print_report(raw_bytes, final_output, str(output_file))
+
     def dispatch(self, args: list):
         """CLI Command & Option Dispatcher."""
         filtered_args = []
@@ -542,11 +554,12 @@ class CogEngine:
             self.handle_git(mode="compact", args=filtered_args[1:])
         elif subcommand in ("git:full", "git_full", "git:all"):
             self.handle_git(mode="full", args=filtered_args[1:])
+        elif subcommand in ("diff", "changes", "staged"):
+            self.handle_diff(filtered_args[1:])
         elif subcommand in ("full", "all"):
             self.generate_full_context()
         else:
             self.generate_full_context()
-
 
 if __name__ == "__main__":
     target_repo = Path.cwd()
