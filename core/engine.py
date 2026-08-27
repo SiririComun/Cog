@@ -131,40 +131,45 @@ class CogEngine:
 
         return meta
 
-    def format_environment_banner(self, meta: Dict[str, Optional[str]]) -> str:
-        """
-        Builds a top-level metadata banner to anchor the LLM's toolchain context.
-        """
+    def format_environment_banner(
+        self,
+        meta: Dict[str, Optional[str]],
+        git_branch: str = "main",
+        git_sha: str = "HEAD",
+    ) -> str:
+        """Builds a top-level metadata banner to anchor the LLM's toolchain and Git context."""
         lines = [
             "=" * 78,
             "⚙️  PROJECT ENVIRONMENT & TOOLCHAIN CONSTRAINTS",
             "=" * 78,
         ]
 
-        has_any_meta = False
+        # 1. Active Git Snapshot Anchor
+        lines.append(f"• Repository State    : {git_branch} @ {git_sha}")
 
+        # 2. Toolchain and Hardware Constraints
         if meta.get("vivado_version"):
-            lines.append(f"• Vivado Tool Version : {meta['vivado_version']} (STRICT: Target toolchain for TCL/GUI workflows)")
-            has_any_meta = True
+            lines.append(
+                f"• Vivado Tool Version : {meta['vivado_version']} (STRICT: Target toolchain for TCL/GUI workflows)"
+            )
 
         if meta.get("target_part"):
-            lines.append(f"• Target FPGA Device  : {meta['target_part']}")
-            has_any_meta = True
+            lines.append(
+                f"• Target FPGA Device  : {meta['target_part']}"
+            )
 
         if meta.get("target_language"):
-            lines.append(f"• Primary HDL Language: {meta['target_language']}")
-            has_any_meta = True
+            lines.append(
+                f"• Primary HDL Language: {meta['target_language']}"
+            )
 
         if meta.get("hardware_pinning"):
-            lines.append(f"• Pinned HW Overlay   : {meta['hardware_pinning']}")
-            has_any_meta = True
+            lines.append(
+                f"• Pinned HW Overlay   : {meta['hardware_pinning']}"
+            )
 
         if meta.get("package_version"):
             lines.append(f"• Package Version     : v{meta['package_version']}")
-            has_any_meta = True
-
-        if not has_any_meta:
-            lines.append("• Toolchain Detection : Generic Standard Project (No specific tool locks detected)")
 
         lines.append("=" * 78 + "\n")
         return "\n".join(lines)
@@ -192,18 +197,32 @@ class CogEngine:
         return unique_targets, output_file
 
     def generate_full_context(self):
-        """
-        Default Mode: Generates the complete, token-compacted repository context.
-        """
+        """Default Mode: Generates the complete, token-compacted repository context."""
         targets, output_file = self.parse_config()
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         buffer: List[str] = []
         raw_total_bytes = 0
 
-        # 1. Environment & Toolchain Constraints Header
+        # 1. Environment & Toolchain Constraints Header (with Git Anchor)
         toolchain_meta = self.extract_toolchain_metadata()
-        buffer.append(self.format_environment_banner(toolchain_meta))
+        active_branch = (
+            GitGraphExtractor._run_git(
+                ["branch", "--show-current"], cwd=str(self.repo_root)
+            )
+            or "HEAD (detached)"
+        )
+        active_sha = (
+            GitGraphExtractor._run_git(
+                ["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root)
+            )
+            or "unknown"
+        )
+        buffer.append(
+            self.format_environment_banner(
+                toolchain_meta, git_branch=active_branch, git_sha=active_sha
+            )
+        )
 
         # 2. Git Graph & Multi-Branch Topology
         buffer.append("Git Context & Branch Topology:\n")
