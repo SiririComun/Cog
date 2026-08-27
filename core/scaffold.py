@@ -5,9 +5,10 @@ Automates project onboarding by scanning repositories and generating
 domain-structured cog.conf and cog.ignore configuration files.
 """
 
+import fnmatch
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 CORE_DIR = Path(__file__).resolve().parent
 if str(CORE_DIR) not in sys.path:
@@ -19,7 +20,7 @@ from ignore_matcher import IgnoreFilter
 
 class ConfigScaffolder:
     """
-    Automates the creation of context/conf/cog.conf and context/conf/cog.ignore.
+    Automates the creation and synchronization of cog.conf and cog.ignore.
     """
 
     DEFAULT_IGNORE_TEMPLATE = """# ==============================================================================
@@ -135,3 +136,76 @@ Thumbs.db
             f.write("\n".join(lines))
 
         return True, cog_conf_path, cog_ignore_path, scan_results
+
+    def update(self, config_path: Optional[Path] = None) -> Tuple[bool, Path, List[str], List[str]]:
+        """
+        Non-destructively synchronizes an existing cog.conf with newly discovered files on disk.
+        Returns (success_flag, config_file_path, newly_added_files, missing_files).
+        """
+        target_conf = config_path if config_path else (self.conf_dir / "cog.conf")
+        if not target_conf.is_file():
+            # Fallback to root cog.conf if present
+            if (self.repo_root / "cog.conf").is_file():
+                target_conf = self.repo_root / "cog.conf"
+            else:
+                return False, target_conf, [], []
+
+        # 1. Parse existing configuration entries & globs
+        existing_lines: List[str] = []
+        tracked_exact: Set[str] = set()
+        tracked_globs: List[str] = []
+
+        with open(target_conf, "r", encoding="utf-8") as f:
+            for raw_line in f:
+                existing_lines.append(raw_line.rstrip("\r\n"))
+                line = raw_line.strip()
+                if not line or line.startswith("#") or line.startswith("OUTPUT:"):
+                    continue
+
+                clean_entry = line.lstrip("./\\")
+                if any(char in clean_entry for char in ("*", "?", "[")):
+                    tracked_globs.append(clean_entry)
+                else:
+                    tracked_exact.add(clean_entry)
+
+        # 2. Check for missing/stale files declared explicitly
+        missing_files: List[str] = []
+        for exact_path_str in tracked_exact:
+            if not (self.repo_root / exact_path_str).is_file():
+                missing_files.append(exact_path_str)
+
+        # 3. Rescan repository
+        scanner = RepoScanner(self.repo_root)
+        discovered_targets = scanner.get_ordered_targets()
+
+        # 4. Filter for genuinely new files not covered by exact lines or globs
+        newly_added: List[str] = []
+        for file_rel in discovered_targets:
+            if file_rel in tracked_exact:
+                continue
+
+            # Check if file is already matched by an existing wildcard pattern
+            covered_by_glob = False
+            for glob_pattern in tracked_globs:
+                if fnmatch.fnmatch(file_rel, glob_pattern):
+                    covered_by_glob = True
+                    break
+
+            if not covered_by_glob:
+                newly_added.append(file_rel)
+
+        # 5. Append new files to cog.conf if any were found
+        if newly_added:
+            append_buffer = [
+                "",
+                "# " + "=" * 76,
+                "# 🔄 Auto-Discovered New Files (Synced by './Cog/Ctx update')",
+                "# " + "=" * 76,
+            ]
+            for new_f in newly_added:
+                append_buffer.append(new_f)
+
+            with open(target_conf, "a", encoding="utf-8") as f:
+                f.write("\n" + "\n".join(append_buffer) + "\n")
+
+        return True, target_conf, newly_added, missing_files

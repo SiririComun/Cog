@@ -375,6 +375,43 @@ class CogEngine:
         print("     ./Cog/Ctx")
         print("=" * 68 + "\n")
     
+    def handle_update(self, args: List[str]):
+        """Non-destructively synchronizes existing configuration with new repository files."""
+        scaffolder = ConfigScaffolder(self.repo_root)
+        success, conf_path, newly_added, missing = scaffolder.update(self.config_file)
+
+        if not success:
+            print("\n❌ [Cog ERROR] No configuration file found to update.")
+            print("   Run './Cog/Ctx init' first to generate your initial configuration.\n")
+            return
+
+        print("\n" + "=" * 68)
+        print("  🔄 COG CONFIGURATION SYNC COMPLETE")
+        print("=" * 68)
+        print(f"  • Configuration : {conf_path}")
+        print(f"  • Newly Added   : {len(newly_added)} new files appended")
+        if missing:
+            print(f"  • Missing / Moved: {len(missing)} files flagged")
+        print("=" * 68)
+
+        if newly_added:
+            print("  ➕ Newly Added Files:")
+            for f in newly_added:
+                print(f"     • {f}")
+            print("=" * 68)
+
+        if missing:
+            print("  ⚠️  Flagged Missing Targets (declared in config but missing on disk):")
+            for f in missing:
+                print(f"     • {f}")
+            print("=" * 68)
+
+        if not newly_added and not missing:
+            print("  ✅ All files are up to date. No configuration changes required.")
+            print("=" * 68)
+
+        print("  👉 Ready to generate context: run './Cog/Ctx'\n")
+
     def dispatch(self, args: list):
         """CLI Command & Option Dispatcher."""
         filtered_args = []
@@ -400,6 +437,8 @@ class CogEngine:
 
         if subcommand in ("init", "setup"):
             self.handle_init(filtered_args[1:])
+        elif subcommand in ("update", "sync"):
+            self.handle_update(filtered_args[1:])
         elif subcommand in ("full", "all"):
             self.generate_full_context()
         else:
