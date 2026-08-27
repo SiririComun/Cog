@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Cog: Token Meter & Compaction Reporter (token_meter.py)
-Estimates LLM prompt token consumption using syntax-calibrated heuristics (~3.1 chars/token)
+Estimates LLM prompt token consumption using calibrated heuristics (~3.6 chars/token for code/docs)
 and reports context health and reduction metrics.
 """
 
@@ -11,15 +11,15 @@ from typing import Optional
 class TokenMeter:
     """
     Syntax-calibrated prompt token estimator and console reporter.
-    Calibrated against modern BPE/SentencePiece tokenizers (Gemini / Claude / GPT).
+    Calibrated against modern BPE/SentencePiece tokenizers (Claude / GPT-4 / Gemini).
     """
 
-    # Calibrated character-to-token ratio for code, JSON, VHDL, and Markdown
-    CHARS_PER_TOKEN = 3.1
+    # Calibrated character-to-token ratio for code, Python, and Markdown
+    CHARS_PER_TOKEN = 3.62
 
     @classmethod
     def estimate_tokens(cls, text: str) -> int:
-        """Estimates token count based on code/JSON character density."""
+        """Estimates token count based on modern LLM subword tokenizer density."""
         if not text:
             return 0
         return int(round(len(text) / cls.CHARS_PER_TOKEN))
@@ -35,13 +35,6 @@ class TokenMeter:
         final_size_bytes = len(final_text.encode("utf-8"))
         est_tokens = cls.estimate_tokens(final_text)
 
-        # Estimate original tokens for accurate reduction calculation
-        original_tokens = (
-            int(round(original_size_bytes / cls.CHARS_PER_TOKEN))
-            if original_size_bytes > 0
-            else 0
-        )
-
         reduction = 0.0
         if original_size_bytes > 0:
             reduction = max(
@@ -55,8 +48,6 @@ class TokenMeter:
         print(f"  • Output File       : {output_path}")
         print(f"  • Final Size        : {final_size_bytes / 1024:.1f} KB")
         print(f"  • Estimated Tokens  : ~{est_tokens:,} tokens")
-        if original_size_bytes > 0:
-            print(
-                f"  • Token Reduction   : ~{reduction:.1f}% savings vs raw files"
-            )
+        if original_size_bytes > 0 and reduction > 0.1:
+            print(f"  • Token Reduction   : ~{reduction:.1f}% savings vs raw files")
         print("=" * 68 + "\n")

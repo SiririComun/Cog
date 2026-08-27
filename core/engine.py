@@ -9,7 +9,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 # Add core directory to python path for internal imports
 CORE_DIR = Path(__file__).resolve().parent
@@ -17,17 +17,18 @@ if str(CORE_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_DIR))
 
 from bd_pruner import BlockDesignPruner
-from code_minifier import CodeMinifier
-from git_graph import GitGraphExtractor
-from ipynb_clean import NotebookCleaner
-from token_meter import TokenMeter
-from ignore_matcher import IgnoreFilter
-from scaffold import ConfigScaffolder
-from doctor import DiagnosticDoctor
-from xdc_clean import XdcCleaner
-from tcl_clean import TclCleaner
 from c_slicer import CSlicer
+from code_minifier import CodeMinifier
 from diff_slicer import DiffSlicer
+from doctor import DiagnosticDoctor
+from git_graph import GitGraphExtractor
+from ignore_matcher import IgnoreFilter
+from ipynb_clean import NotebookCleaner
+from scaffold import ConfigScaffolder
+from tcl_clean import TclCleaner
+from token_meter import TokenMeter
+from xdc_clean import XdcCleaner
+
 
 class CogEngine:
     SYNTAX_MAP = {
@@ -45,12 +46,66 @@ class CogEngine:
         ".xdc": "xdc",
         ".conf": "conf",
         ".src": "src",
+        ".con": "tcl",
+        ".sub": "tcl",
+        ".ext": "tcl",
         ".sh": "bash",
         ".c": "c",
         ".cpp": "cpp",
         ".h": "c",
         ".hpp": "cpp",
         ".md": "markdown",
+        ".rst": "rst",
+        ".txt": "text",
+    }
+
+    # Extension to domain mapping
+    EXTENSION_DOMAIN_MAP = {
+        ".vhd": "rtl",
+        ".vhdl": "rtl",
+        ".v": "rtl",
+        ".sv": "rtl",
+        ".bd": "bd",
+        ".xdc": "constraints",
+        ".tcl": "build",
+        ".src": "build",
+        ".con": "build",
+        ".sub": "build",
+        ".ext": "build",
+        ".conf": "build",
+        ".py": "software",
+        ".c": "software",
+        ".cpp": "software",
+        ".h": "software",
+        ".hpp": "software",
+        ".sh": "software",
+        ".ipynb": "notebooks",
+        ".md": "documentation",
+        ".rst": "documentation",
+        ".txt": "documentation",
+    }
+
+    # Aliases mapping subcommands to domain filter sets
+    DOMAIN_ALIASES: Dict[str, Set[str]] = {
+        "bd": {"bd"},
+        "ip": {"bd"},
+        "rtl": {"rtl"},
+        "hw": {"rtl"},
+        "vhd": {"rtl"},
+        "v": {"rtl"},
+        "sw": {"software"},
+        "py": {"software"},
+        "driver": {"software"},
+        "nb": {"notebooks"},
+        "ipynb": {"notebooks"},
+        "docs": {"documentation", "notebooks"},
+        "xdc": {"constraints"},
+        "pins": {"constraints"},
+        "constraints": {"constraints"},
+        "tcl": {"build"},
+        "build": {"build"},
+        "hld": {"bd", "rtl", "software"},
+        "app": {"software", "notebooks"},
     }
 
     # Prioritized lookup candidate locations for cog.conf
@@ -73,14 +128,7 @@ class CogEngine:
         )
 
     def _resolve_config_path(self, config_override: Optional[Path] = None) -> Path:
-        """
-        Resolves the configuration file location following priority hierarchy:
-        1. CLI override (--config / -C)
-        2. context/conf/cog.conf
-        3. .cog/cog.conf
-        4. ./cog.conf
-        If none exist on disk, defaults to context/conf/cog.conf.
-        """
+        """Resolves configuration path with prioritized fallbacks."""
         if config_override:
             override_path = Path(config_override)
             return (
@@ -94,14 +142,10 @@ class CogEngine:
             if candidate_full.is_file():
                 return candidate_full
 
-        # Default fallback for new project initialization
         return self.repo_root / "context" / "conf" / "cog.conf"
 
     def extract_toolchain_metadata(self) -> Dict[str, Optional[str]]:
-        """
-        Auto-detects Vivado versions, target FPGA parts, HDL languages,
-        and hardware release pinning across Hog/Vivado/PYNQ repositories.
-        """
+        """Auto-detects Vivado versions, target FPGA parts, HDL languages, and package versions."""
         meta: Dict[str, Optional[str]] = {
             "vivado_version": None,
             "target_part": None,
@@ -110,7 +154,7 @@ class CogEngine:
             "package_version": None,
         }
 
-        # 1. Scan Hog configuration files (Top/**/hog.conf)
+        # 1. Scan Hog configuration files
         for hog_conf in self.repo_root.glob("Top/**/hog.conf"):
             if hog_conf.exists():
                 try:
@@ -131,7 +175,7 @@ class CogEngine:
                 except Exception:
                     pass
 
-        # 2. Fallback / Cross-verify with Vivado Block Designs (*.bd)
+        # 2. Vivado Block Designs (*.bd)
         if not meta["vivado_version"] or not meta["target_part"]:
             for bd_file in self.repo_root.glob("**/*.bd"):
                 try:
@@ -147,7 +191,7 @@ class CogEngine:
                 except Exception:
                     pass
 
-        # 3. Check hardware.json for pinned overlay release (PYNQ workflow)
+        # 3. hardware.json (PYNQ workflow)
         hw_json = self.repo_root / "hardware.json"
         if hw_json.exists():
             try:
@@ -160,7 +204,7 @@ class CogEngine:
             except Exception:
                 pass
 
-        # 4. Check setup.py for package version info
+        # 4. setup.py
         setup_py = self.repo_root / "setup.py"
         if setup_py.exists():
             try:
@@ -180,7 +224,7 @@ class CogEngine:
         git_branch: str = "main",
         git_sha: str = "HEAD",
     ) -> str:
-        """Builds a top-level metadata banner to anchor the LLM's toolchain and Git context."""
+        """Builds top-level metadata banner anchoring LLM context."""
         lines = [
             "=" * 78,
             "⚙️  PROJECT ENVIRONMENT & TOOLCHAIN CONSTRAINTS",
@@ -190,19 +234,13 @@ class CogEngine:
         lines.append(f"• Repository State    : {git_branch} @ {git_sha}")
 
         if meta.get("vivado_version"):
-            lines.append(
-                f"• Vivado Tool Version : {meta['vivado_version']} (STRICT: Target toolchain for TCL/GUI workflows)"
-            )
-
+            lines.append(f"• Vivado Tool Version : {meta['vivado_version']} (STRICT: Target toolchain for TCL/GUI workflows)")
         if meta.get("target_part"):
             lines.append(f"• Target FPGA Device  : {meta['target_part']}")
-
         if meta.get("target_language"):
             lines.append(f"• Primary HDL Language: {meta['target_language']}")
-
         if meta.get("hardware_pinning"):
             lines.append(f"• Pinned HW Overlay   : {meta['hardware_pinning']}")
-
         if meta.get("package_version"):
             lines.append(f"• Package Version     : v{meta['package_version']}")
 
@@ -210,11 +248,7 @@ class CogEngine:
         return "\n".join(lines)
 
     def parse_config(self) -> Tuple[List[str], Path]:
-        """
-        Parses the resolved cog.conf for target files, expanding glob patterns
-        (e.g., core/*.py, src/**/*.vhd), filtering through IgnoreFilter,
-        and deduplicating while preserving insertion order.
-        """
+        """Parses cog.conf for target files, expanding glob patterns and filtering ignore rules."""
         raw_targets: List[str] = []
         output_file = self.repo_root / "context" / "summary.txt"
 
@@ -241,10 +275,7 @@ class CogEngine:
         resolved_targets: List[str] = []
 
         for target_entry in raw_targets:
-            # Clean leading slashes / relative notation
             clean_entry = target_entry.lstrip("./\\")
-
-            # Check if entry contains wildcard / glob characters
             has_glob = any(char in clean_entry for char in ("*", "?", "["))
 
             if has_glob:
@@ -258,11 +289,9 @@ class CogEngine:
                 except Exception:
                     pass
 
-                # Sort matches deterministically
                 matched_files.sort(key=lambda p: p.as_posix())
                 for rel_p in matched_files:
                     resolved_targets.append(rel_p.as_posix())
-
             else:
                 target_path = self.repo_root / clean_entry
                 if target_path.is_file():
@@ -270,54 +299,57 @@ class CogEngine:
                     if not self.ignore_filter.is_ignored(rel):
                         resolved_targets.append(rel.as_posix())
 
-        # Deduplicate while preserving group insertion order
         unique_targets = list(dict.fromkeys(resolved_targets))
         return unique_targets, output_file
 
+    def _compact_file(self, target_path: Path, raw_text: str) -> str:
+        """Applies specialized domain compaction based on file extension."""
+        ext = target_path.suffix.lower()
+        if ext == ".bd":
+            return BlockDesignPruner.prune_bd_json(raw_text)
+        elif ext == ".ipynb":
+            return NotebookCleaner.clean_notebook(raw_text)
+        elif ext == ".xdc":
+            return XdcCleaner.clean_xdc(raw_text)
+        elif ext in (".tcl", ".src", ".con", ".sub", ".ext"):
+            return TclCleaner.clean_tcl(raw_text)
+        elif ext in (".c", ".cpp", ".h", ".hpp"):
+            return CSlicer.slice_c_cpp(raw_text, ext)
+        else:
+            return CodeMinifier.minify(raw_text, ext)
+
     def generate_full_context(self):
-        """Default Mode: Generates the complete, token-compacted repository context."""
+        """Default Mode: Generates complete token-compacted repository context."""
         targets, output_file = self.parse_config()
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         buffer: List[str] = []
         raw_total_bytes = 0
 
-        # 1. Environment & Toolchain Constraints Header (with Git Anchor)
+        # 1. Environment Banner
         toolchain_meta = self.extract_toolchain_metadata()
         active_branch = (
-            GitGraphExtractor._run_git(
-                ["branch", "--show-current"], cwd=str(self.repo_root)
-            )
+            GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
             or "HEAD (detached)"
         )
         active_sha = (
-            GitGraphExtractor._run_git(
-                ["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root)
-            )
+            GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
             or "unknown"
         )
         buffer.append(
-            self.format_environment_banner(
-                toolchain_meta, git_branch=active_branch, git_sha=active_sha
-            )
+            self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
         )
 
-        # 2. Git Graph & Multi-Branch Topology
+        # 2. Multi-Branch Git Topology
         buffer.append("Git Context & Branch Topology:\n")
         buffer.append("```log")
         buffer.append(GitGraphExtractor.extract_summary(str(self.repo_root)))
         buffer.append("```\n")
 
-        # 3. File Ingestion, Ignore Filtering & Domain-Specific Compacting
+        # 3. File Ingestion & Compacting
         for target_rel in targets:
             target_path = self.repo_root / target_rel
-
-            # Ensure file exists on disk
-            if not target_path.is_file():
-                continue
-
-            # Respect .gitignore, cog.ignore, and built-in EDA noise rules
-            if self.ignore_filter.is_ignored(Path(target_rel)):
+            if not target_path.is_file() or self.ignore_filter.is_ignored(Path(target_rel)):
                 continue
 
             with open(target_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -326,20 +358,7 @@ class CogEngine:
             raw_total_bytes += len(raw_text.encode("utf-8"))
             ext = target_path.suffix.lower()
             syntax = self.SYNTAX_MAP.get(ext, "text")
-
-            # Apply domain-specific compaction inside the loop
-            if ext == ".bd":
-                processed_text = BlockDesignPruner.prune_bd_json(raw_text)
-            elif ext == ".ipynb":
-                processed_text = NotebookCleaner.clean_notebook(raw_text)
-            elif ext == ".xdc":
-                processed_text = XdcCleaner.clean_xdc(raw_text)
-            elif ext == ".tcl":
-                processed_text = TclCleaner.clean_tcl(raw_text)
-            elif ext in (".c", ".cpp", ".h", ".hpp"):
-                processed_text = CSlicer.slice_c_cpp(raw_text, ext)
-            else:
-                processed_text = CodeMinifier.minify(raw_text, ext)
+            processed_text = self._compact_file(target_path, raw_text)
 
             buffer.append(f"{target_path.name}: ({target_rel})\n")
             buffer.append(f"```{syntax}")
@@ -348,14 +367,76 @@ class CogEngine:
 
         final_output = "\n".join(buffer)
 
-        # Write distilled payload to destination file
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(final_output)
 
         TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
 
+    def generate_sliced_context(self, allowed_domains: Set[str], slice_name: str):
+        """Generates a domain-specific sliced context payload."""
+        targets, _ = self.parse_config()
+        output_file = self.repo_root / "context" / f"{slice_name}_summary.txt"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        buffer: List[str] = []
+        raw_total_bytes = 0
+
+        # 1. Environment Banner
+        toolchain_meta = self.extract_toolchain_metadata()
+        active_branch = (
+            GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
+            or "HEAD (detached)"
+        )
+        active_sha = (
+            GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
+            or "unknown"
+        )
+        buffer.append(
+            self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
+        )
+
+        matched_files_count = 0
+
+        # 2. Ingest and compact only files matching allowed domain categories
+        for target_rel in targets:
+            target_path = self.repo_root / target_rel
+            if not target_path.is_file() or self.ignore_filter.is_ignored(Path(target_rel)):
+                continue
+
+            ext = target_path.suffix.lower()
+            file_domain = self.EXTENSION_DOMAIN_MAP.get(ext, "other")
+
+            # Check if file matches target slice domain
+            if file_domain not in allowed_domains:
+                continue
+
+            matched_files_count += 1
+            with open(target_path, "r", encoding="utf-8", errors="ignore") as f:
+                raw_text = f.read()
+
+            raw_total_bytes += len(raw_text.encode("utf-8"))
+            syntax = self.SYNTAX_MAP.get(ext, "text")
+            processed_text = self._compact_file(target_path, raw_text)
+
+            buffer.append(f"{target_path.name}: ({target_rel})\n")
+            buffer.append(f"```{syntax}")
+            buffer.append(processed_text)
+            buffer.append("```\n")
+
+        if matched_files_count == 0:
+            print(f"\n⚠️  [Cog WARNING] No files found matching domain slice '{slice_name}' in configuration.")
+            return
+
+        final_output = "\n".join(buffer)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(final_output)
+
+        print(f"  • Slice Category    : [{slice_name.upper()}] ({matched_files_count} files)")
+        TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
+
     def handle_init(self, args: List[str]):
-        """Executes the automated repository onboarding & configuration scaffolding."""
+        """Executes repository onboarding & configuration scaffolding."""
         force = any(flag in args for flag in ("--force", "-f"))
         scaffolder = ConfigScaffolder(self.repo_root)
         success, conf_path, ignore_path, scan_results = scaffolder.scaffold(force=force)
@@ -421,7 +502,7 @@ class CogEngine:
             print("=" * 68)
 
         print("  👉 Ready to generate context: run './Cog/Ctx'\n")
-    
+
     def handle_check(self, args: List[str]):
         """Executes repository diagnostics and token health checks."""
         doctor = DiagnosticDoctor(self)
@@ -434,32 +515,20 @@ class CogEngine:
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         buffer: List[str] = []
-        raw_total_bytes = 0
-
-        # 1. Environment Banner
         toolchain_meta = self.extract_toolchain_metadata()
         active_branch = (
-            GitGraphExtractor._run_git(
-                ["branch", "--show-current"], cwd=str(self.repo_root)
-            )
+            GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
             or "HEAD (detached)"
         )
         active_sha = (
-            GitGraphExtractor._run_git(
-                ["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root)
-            )
+            GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
             or "unknown"
         )
         buffer.append(
-            self.format_environment_banner(
-                toolchain_meta, git_branch=active_branch, git_sha=active_sha
-            )
+            self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
         )
 
-        # 2. Multi-Branch Git Topology
-        git_summary = GitGraphExtractor.extract_summary(
-            str(self.repo_root), mode=mode
-        )
+        git_summary = GitGraphExtractor.extract_summary(str(self.repo_root), mode=mode)
         raw_total_bytes = len(git_summary.encode("utf-8"))
 
         buffer.append("Git Context & Branch Topology:\n")
@@ -475,7 +544,7 @@ class CogEngine:
         TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
 
     def handle_diff(self, args: Optional[List[str]] = None):
-        """Generates a working-tree diff and modified files context payload."""
+        """Generates working-tree diff and modified files context payload."""
         output_file = self.repo_root / "context" / "diff_summary.txt"
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -487,7 +556,7 @@ class CogEngine:
         TokenMeter.print_report(raw_bytes, final_output, str(output_file))
 
     def handle_pr(self, args: Optional[List[str]] = None):
-        """Generates a Pull Request review context comparing feature branch against base."""
+        """Generates Pull Request review context comparing feature branch against base."""
         args = args or []
         base_branch_arg = args[0] if args else None
 
@@ -541,10 +610,14 @@ class CogEngine:
             self.handle_diff(filtered_args[1:])
         elif subcommand in ("pr", "review"):
             self.handle_pr(filtered_args[1:])
+        elif subcommand in self.DOMAIN_ALIASES:
+            allowed_domains = self.DOMAIN_ALIASES[subcommand]
+            self.generate_sliced_context(allowed_domains, slice_name=subcommand)
         elif subcommand in ("full", "all"):
             self.generate_full_context()
         else:
             self.generate_full_context()
+
 
 if __name__ == "__main__":
     target_repo = Path.cwd()
