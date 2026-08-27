@@ -2,8 +2,8 @@
 """
 Cog: Jupyter Notebook Compactor (ipynb_clean.py)
 Converts verbose .ipynb JSON into token-dense Python scripts in '# %%' format.
-Preserves 100% of executable code cells, hardware wiring tables, and section headers
-while stripping output blobs, base64 images, and tutorial prose bloat.
+Preserves 100% of executable code cells, hardware wiring tables, section headers,
+and safety-critical engineering callouts while stripping output blobs and image data.
 """
 
 import json
@@ -13,19 +13,26 @@ from typing import Any, List
 
 class NotebookCleaner:
     """
-    High-density Jupyter Notebook compactor.
-    Achieves 75%–85% token reduction on .ipynb files with zero loss of code or hardware pinouts.
+    High-density Jupyter Notebook compactor with hardware safety guardrails.
+    Achieves 75%–85% token reduction on .ipynb files with zero loss of code or pinouts.
     """
+
+    # Safety and domain keywords that must NEVER be truncated or dropped
+    SAFETY_KEYWORD_PATTERN = re.compile(
+        r"\b(warning|caution|danger|alert|important|note|notice|critical|"
+        r"register|offset|pin|vcc|gnd|clock|freq|frequency|baud|voltage|"
+        r"timing|constraint|addr|address|bitstream|overlay|dma|axi)\b",
+        re.IGNORECASE,
+    )
 
     @classmethod
     def _distill_markdown(cls, source: str) -> List[str]:
         """
-        Extracts structural headers, hardware connection tables, and bullet points
-        while filtering out verbose multi-paragraph tutorial prose.
+        Extracts structural headers, hardware connection tables, bullet points,
+        and safety callouts while condensing verbose tutorial prose.
         """
         lines = source.splitlines()
         distilled: List[str] = []
-
         in_table = False
 
         for raw_line in lines:
@@ -39,33 +46,44 @@ class NotebookCleaner:
                 in_table = False
                 continue
 
-            # 2. Preserve Markdown Tables (e.g. Hardware Pinout & Wiring Tables)
+            # 2. Preserve Markdown Tables (Hardware Pinouts, Register Maps)
             if line.startswith("|") and line.endswith("|"):
                 distilled.append(f"# {line}")
                 in_table = True
                 continue
 
-            # 3. Preserve Bullet Points, Numbered Lists, and Key Parameter Callouts
+            # 3. Preserve Bullet Points, Numbered Lists, and Steps
             if re.match(r"^[-*+]\s+", line) or re.match(r"^\d+\.\s+", line):
                 distilled.append(f"# {line}")
                 in_table = False
                 continue
 
-            # 4. Preserve Bold Setup/Key Takeaways (e.g. "**Hardware Wiring:**")
+            # 4. Preserve Bold Setup & Blockquote Callouts (e.g. "> Warning:")
             if line.startswith("**") or line.startswith(">"):
                 distilled.append(f"# {line}")
                 in_table = False
                 continue
 
-            # 5. For regular prose paragraphs: retain only concise first sentences/intents
+            # 5. Hardware Safety Guardrail: Never truncate if safety keywords are present
+            if cls.SAFETY_KEYWORD_PATTERN.search(line):
+                distilled.append(f"# {line}")
+                in_table = False
+                continue
+
+            # 6. For regular prose paragraphs:
             if not in_table:
-                # If short summary sentence (< 140 chars), retain as comment
                 if len(line) <= 140:
                     distilled.append(f"# {line}")
                 else:
-                    # Truncate long multi-sentence textbook explanations to the leading sentence
-                    first_sentence = re.split(r"(?<=[.!?])\s+", line)[0]
-                    distilled.append(f"# {first_sentence}")
+                    # Break into sentences; preserve the leading sentence + any sentence with technical keywords
+                    sentences = re.split(r"(?<=[.!?])\s+", line)
+                    kept_sentences = [sentences[0]]
+
+                    for s in sentences[1:]:
+                        if cls.SAFETY_KEYWORD_PATTERN.search(s):
+                            kept_sentences.append(s)
+
+                    distilled.append(f"# {' '.join(kept_sentences)}")
 
         return distilled
 
@@ -97,7 +115,9 @@ class NotebookCleaner:
                 continue
 
             if cell_type == "code":
-                output_lines.append(f"# %% [code] Cell {idx + 1}")
+                exec_count = cell.get("execution_count")
+                count_str = f" [In {exec_count}]" if exec_count is not None else ""
+                output_lines.append(f"# %% [code] Cell {idx + 1}{count_str}")
                 output_lines.append(source)
                 output_lines.append("")
 

@@ -24,6 +24,9 @@ from token_meter import TokenMeter
 from ignore_matcher import IgnoreFilter
 from scaffold import ConfigScaffolder
 from doctor import DiagnosticDoctor
+from xdc_clean import XdcCleaner
+from tcl_clean import TclCleaner
+from c_slicer import CSlicer
 
 
 class CogEngine:
@@ -324,11 +327,17 @@ class CogEngine:
             ext = target_path.suffix.lower()
             syntax = self.SYNTAX_MAP.get(ext, "text")
 
-            # Apply domain-specific compaction
+            # Apply domain-specific compaction inside the loop
             if ext == ".bd":
                 processed_text = BlockDesignPruner.prune_bd_json(raw_text)
             elif ext == ".ipynb":
                 processed_text = NotebookCleaner.clean_notebook(raw_text)
+            elif ext == ".xdc":
+                processed_text = XdcCleaner.clean_xdc(raw_text)
+            elif ext == ".tcl":
+                processed_text = TclCleaner.clean_tcl(raw_text)
+            elif ext in (".c", ".cpp", ".h", ".hpp"):
+                processed_text = CSlicer.slice_c_cpp(raw_text, ext)
             else:
                 processed_text = CodeMinifier.minify(raw_text, ext)
 
