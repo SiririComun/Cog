@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Cog: Context on Git - Main CLI Entry Point
+# Cog: Context on Git - POSIX CLI Entry Point (Linux / macOS / WSL)
 # Usage: ./Cog/Ctx [COMMAND] [OPTIONS]
 # ==============================================================================
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_BIN="$(which python3 || which python)"
+PYTHON_BIN="$(which python3 2>/dev/null || which python 2>/dev/null || true)"
 
 if [ -z "$PYTHON_BIN" ]; then
     echo "[Cog ERROR] Python 3 was not found on your PATH." >&2
     exit 1
 fi
 
-"$PYTHON_BIN" "${SCRIPT_DIR}/core/engine.py" "$@"
+exec "$PYTHON_BIN" "${SCRIPT_DIR}/core/engine.py" "$@"
