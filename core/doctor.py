@@ -20,6 +20,7 @@ from ipynb_clean import NotebookCleaner
 from token_meter import TokenMeter
 from xdc_clean import XdcCleaner
 from tcl_clean import TclCleaner
+from c_slicer import CSlicer
 
 
 class DiagnosticDoctor:
@@ -119,6 +120,12 @@ class DiagnosticDoctor:
                 elif ext == ".xdc":
                     processed = XdcCleaner.clean_xdc(raw_text)
                     cat = "Constraints"
+                elif ext == ".tcl":
+                    processed = TclCleaner.clean_tcl(raw_text)
+                    cat = "Build (TCL)"
+                elif ext in (".c", ".cpp", ".h", ".hpp"):
+                    processed = CSlicer.slice_c_cpp(raw_text, ext)
+                    cat = "Software (C/C++)"
                 elif ext in (".vhd", ".vhdl", ".v", ".sv"):
                     processed = CodeMinifier.minify(raw_text, ext)
                     cat = "Hardware (RTL)"

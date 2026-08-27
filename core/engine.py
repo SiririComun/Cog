@@ -26,6 +26,7 @@ from scaffold import ConfigScaffolder
 from doctor import DiagnosticDoctor
 from xdc_clean import XdcCleaner
 from tcl_clean import TclCleaner
+from c_slicer import CSlicer
 
 
 class CogEngine:
@@ -335,6 +336,8 @@ class CogEngine:
                 processed_text = XdcCleaner.clean_xdc(raw_text)
             elif ext == ".tcl":
                 processed_text = TclCleaner.clean_tcl(raw_text)
+            elif ext in (".c", ".cpp", ".h", ".hpp"):
+                processed_text = CSlicer.slice_c_cpp(raw_text, ext)
             else:
                 processed_text = CodeMinifier.minify(raw_text, ext)
 
