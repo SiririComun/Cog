@@ -22,6 +22,8 @@ from git_graph import GitGraphExtractor
 from ipynb_clean import NotebookCleaner
 from token_meter import TokenMeter
 from ignore_matcher import IgnoreFilter
+from scaffold import ConfigScaffolder
+from doctor import DiagnosticDoctor
 
 
 class CogEngine:
@@ -343,9 +345,79 @@ class CogEngine:
 
         TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
 
+    def handle_init(self, args: List[str]):
+        """Executes the automated repository onboarding & configuration scaffolding."""
+        force = any(flag in args for flag in ("--force", "-f"))
+        scaffolder = ConfigScaffolder(self.repo_root)
+        success, conf_path, ignore_path, scan_results = scaffolder.scaffold(force=force)
+
+        if not success:
+            print("\n⚠️  [Cog WARNING] Configuration already exists:")
+            print(f"   • {conf_path}")
+            print("\nUse './Cog/Ctx init --force' to overwrite existing configuration.\n")
+            return
+
+        total_files = sum(len(f) for f in scan_results.values())
+
+        print("\n" + "=" * 68)
+        print("  🎉 COG PROJECT INITIALIZATION COMPLETE")
+        print("=" * 68)
+        print(f"  • Configuration     : {conf_path}")
+        print(f"  • Ignore Rules      : {ignore_path}")
+        print(f"  • Total Discovered  : {total_files} files classified across domains")
+        print("=" * 68)
+
+        for domain, files in scan_results.items():
+            if files:
+                print(f"  📂 [{domain.upper()}]: {len(files)} files")
+
+        print("=" * 68)
+        print("  👉 Next Step: Review your 'context/conf/cog.conf' and run:")
+        print("     ./Cog/Ctx")
+        print("=" * 68 + "\n")
+    
+    def handle_check(self, args: List[str]):
+        """Executes repository diagnostics and token health checks."""
+        doctor = DiagnosticDoctor(self)
+        doctor.print_diagnostic_report()
+        """Non-destructively synchronizes existing configuration with new repository files."""
+        scaffolder = ConfigScaffolder(self.repo_root)
+        success, conf_path, newly_added, missing = scaffolder.update(self.config_file)
+
+        if not success:
+            print("\n❌ [Cog ERROR] No configuration file found to update.")
+            print("   Run './Cog/Ctx init' first to generate your initial configuration.\n")
+            return
+
+        print("\n" + "=" * 68)
+        print("  🔄 COG CONFIGURATION SYNC COMPLETE")
+        print("=" * 68)
+        print(f"  • Configuration : {conf_path}")
+        print(f"  • Newly Added   : {len(newly_added)} new files appended")
+        if missing:
+            print(f"  • Missing / Moved: {len(missing)} files flagged")
+        print("=" * 68)
+
+        if newly_added:
+            print("  ➕ Newly Added Files:")
+            for f in newly_added:
+                print(f"     • {f}")
+            print("=" * 68)
+
+        if missing:
+            print("  ⚠️  Flagged Missing Targets (declared in config but missing on disk):")
+            for f in missing:
+                print(f"     • {f}")
+            print("=" * 68)
+
+        if not newly_added and not missing:
+            print("  ✅ All files are up to date. No configuration changes required.")
+            print("=" * 68)
+
+        print("  👉 Ready to generate context: run './Cog/Ctx'\n")
+
     def dispatch(self, args: list):
         """CLI Command & Option Dispatcher."""
-        # Process custom config flags (--config <path> or -C <path>)
         filtered_args = []
         custom_config: Optional[Path] = None
 
@@ -365,9 +437,15 @@ class CogEngine:
         if custom_config:
             self.config_file = self._resolve_config_path(custom_config)
 
-        command = filtered_args[0].upper() if filtered_args else "FULL"
+        subcommand = filtered_args[0].lower() if filtered_args else "full"
 
-        if command in ("FULL", "ALL"):
+        if subcommand in ("init", "setup"):
+            self.handle_init(filtered_args[1:])
+        elif subcommand in ("update", "sync"):
+            self.handle_update(filtered_args[1:])
+        elif subcommand in ("check", "doctor"):
+            self.handle_check(filtered_args[1:])
+        elif subcommand in ("full", "all"):
             self.generate_full_context()
         else:
             self.generate_full_context()
