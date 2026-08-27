@@ -7,3 +7,9 @@ __pycache__/
 *.tmp
 *.log
 .DS_Store
+
+# Temporary & context generation output
+cog.conf
+context/
+*.tmp
+*.log
