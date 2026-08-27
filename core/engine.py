@@ -206,30 +206,67 @@ class CogEngine:
 
     def parse_config(self) -> Tuple[List[str], Path]:
         """
-        Parses the resolved cog.conf for target files and output destination,
-        deduplicating paths while preserving insertion order.
+        Parses the resolved cog.conf for target files, expanding glob patterns
+        (e.g., core/*.py, src/**/*.vhd), filtering through IgnoreFilter,
+        and deduplicating while preserving insertion order.
         """
-        targets: List[str] = []
+        raw_targets: List[str] = []
         output_file = self.repo_root / "context" / "summary.txt"
 
-        if self.config_file.is_file():
-            with open(self.config_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    if line.startswith("OUTPUT:"):
-                        raw_output = line.split(":", 1)[1].strip()
-                        out_path = Path(raw_output)
-                        output_file = (
-                            out_path.resolve()
-                            if out_path.is_absolute()
-                            else self.repo_root / out_path
-                        )
-                    else:
-                        targets.append(line)
+        if not self.config_file.is_file():
+            return [], output_file
 
-        unique_targets = list(dict.fromkeys(targets))
+        with open(self.config_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+
+                if line.startswith("OUTPUT:"):
+                    raw_output = line.split(":", 1)[1].strip()
+                    out_path = Path(raw_output)
+                    output_file = (
+                        out_path.resolve()
+                        if out_path.is_absolute()
+                        else self.repo_root / out_path
+                    )
+                else:
+                    raw_targets.append(line)
+
+        resolved_targets: List[str] = []
+
+        for target_entry in raw_targets:
+            # Clean leading slashes / relative notation
+            clean_entry = target_entry.lstrip("./\\")
+
+            # Check if entry contains wildcard / glob characters
+            has_glob = any(char in clean_entry for char in ("*", "?", "["))
+
+            if has_glob:
+                matched_files: List[Path] = []
+                try:
+                    for matched_path in self.repo_root.glob(clean_entry):
+                        if matched_path.is_file():
+                            rel = matched_path.relative_to(self.repo_root)
+                            if not self.ignore_filter.is_ignored(rel):
+                                matched_files.append(rel)
+                except Exception:
+                    pass
+
+                # Sort matches deterministically
+                matched_files.sort(key=lambda p: p.as_posix())
+                for rel_p in matched_files:
+                    resolved_targets.append(rel_p.as_posix())
+
+            else:
+                target_path = self.repo_root / clean_entry
+                if target_path.is_file():
+                    rel = target_path.relative_to(self.repo_root)
+                    if not self.ignore_filter.is_ignored(rel):
+                        resolved_targets.append(rel.as_posix())
+
+        # Deduplicate while preserving group insertion order
+        unique_targets = list(dict.fromkeys(resolved_targets))
         return unique_targets, output_file
 
     def generate_full_context(self):
