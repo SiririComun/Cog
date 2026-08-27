@@ -21,6 +21,7 @@ from code_minifier import CodeMinifier
 from git_graph import GitGraphExtractor
 from ipynb_clean import NotebookCleaner
 from token_meter import TokenMeter
+from ignore_matcher import IgnoreFilter
 
 
 class CogEngine:
@@ -54,9 +55,17 @@ class CogEngine:
         Path("cog.conf"),
     )
 
-    def __init__(self, target_repo_root: Path, config_override: Optional[Path] = None):
+    def __init__(
+        self,
+        target_repo_root: Path,
+        config_override: Optional[Path] = None,
+        ignore_override: Optional[Path] = None,
+    ):
         self.repo_root = target_repo_root.resolve()
         self.config_file = self._resolve_config_path(config_override)
+        self.ignore_filter = IgnoreFilter(
+            repo_root=self.repo_root, custom_ignore_path=ignore_override
+        )
 
     def _resolve_config_path(self, config_override: Optional[Path] = None) -> Path:
         """
@@ -257,10 +266,16 @@ class CogEngine:
         buffer.append(GitGraphExtractor.extract_summary(str(self.repo_root)))
         buffer.append("```\n")
 
-        # 3. File Ingestion & Domain-Specific Compacting
+        # 3. File Ingestion, Ignore Filtering & Domain-Specific Compacting
         for target_rel in targets:
             target_path = self.repo_root / target_rel
+
+            # Ensure file exists on disk
             if not target_path.is_file():
+                continue
+
+            # Respect .gitignore, cog.ignore, and built-in EDA noise rules
+            if self.ignore_filter.is_ignored(Path(target_rel)):
                 continue
 
             with open(target_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -270,6 +285,7 @@ class CogEngine:
             ext = target_path.suffix.lower()
             syntax = self.SYNTAX_MAP.get(ext, "text")
 
+            # Apply domain-specific compaction
             if ext == ".bd":
                 processed_text = BlockDesignPruner.prune_bd_json(raw_text)
             elif ext == ".ipynb":
@@ -284,6 +300,7 @@ class CogEngine:
 
         final_output = "\n".join(buffer)
 
+        # Write distilled payload to destination file
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(final_output)
 
