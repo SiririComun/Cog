@@ -18,6 +18,7 @@ if str(CORE_DIR) not in sys.path:
 
 from bd_pruner import BlockDesignPruner
 from c_slicer import CSlicer
+from clipboard import ClipboardManager
 from code_minifier import CodeMinifier
 from diff_slicer import DiffSlicer
 from doctor import DiagnosticDoctor
@@ -59,7 +60,6 @@ class CogEngine:
         ".txt": "text",
     }
 
-    # Extension to domain mapping
     EXTENSION_DOMAIN_MAP = {
         ".vhd": "rtl",
         ".vhdl": "rtl",
@@ -85,7 +85,6 @@ class CogEngine:
         ".txt": "documentation",
     }
 
-    # Aliases mapping subcommands to domain filter sets
     DOMAIN_ALIASES: Dict[str, Set[str]] = {
         "bd": {"bd"},
         "ip": {"bd"},
@@ -108,7 +107,6 @@ class CogEngine:
         "app": {"software", "notebooks"},
     }
 
-    # Prioritized lookup candidate locations for cog.conf
     CONFIG_CANDIDATE_PATHS = (
         Path("context") / "conf" / "cog.conf",
         Path(".cog") / "cog.conf",
@@ -318,33 +316,70 @@ class CogEngine:
         else:
             return CodeMinifier.minify(raw_text, ext)
 
-    def generate_full_context(self):
+    def _finalize_output(
+        self,
+        final_text: str,
+        raw_bytes: int,
+        output_file: Path,
+        opts: Dict[str, any],
+    ):
+        """Dispatches final payload to file, stdout, and/or system clipboard."""
+        # 1. Stdout mode: emit raw payload to stdout
+        if opts.get("to_stdout"):
+            sys.stdout.write(final_text + "\n")
+            return
+
+        # 2. Write to target file
+        out_path = opts.get("output_override") or output_file
+        out_path = Path(out_path)
+        if not out_path.is_absolute():
+            out_path = self.repo_root / out_path
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(final_text)
+
+        # 3. Print Report
+        TokenMeter.print_report(raw_bytes, final_text, str(out_path))
+
+        # 4. Clipboard mode: copy to clipboard
+        if opts.get("to_clipboard"):
+            success = ClipboardManager.copy(final_text)
+            if success:
+                print("  📋 Copied complete context payload to system clipboard.\n")
+            else:
+                print("  ⚠️  [Cog WARNING] No supported clipboard utility found (wl-copy, xclip, pbcopy, clip.exe).\n")
+
+    def generate_full_context(self, opts: Optional[Dict[str, any]] = None):
         """Default Mode: Generates complete token-compacted repository context."""
+        opts = opts or {}
         targets, output_file = self.parse_config()
-        output_file.parent.mkdir(parents=True, exist_ok=True)
 
         buffer: List[str] = []
         raw_total_bytes = 0
 
         # 1. Environment Banner
-        toolchain_meta = self.extract_toolchain_metadata()
-        active_branch = (
-            GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
-            or "HEAD (detached)"
-        )
-        active_sha = (
-            GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
-            or "unknown"
-        )
-        buffer.append(
-            self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
-        )
+        if not opts.get("no_banner"):
+            toolchain_meta = self.extract_toolchain_metadata()
+            active_branch = (
+                GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
+                or "HEAD (detached)"
+            )
+            active_sha = (
+                GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
+                or "unknown"
+            )
+            buffer.append(
+                self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
+            )
 
         # 2. Multi-Branch Git Topology
-        buffer.append("Git Context & Branch Topology:\n")
-        buffer.append("```log")
-        buffer.append(GitGraphExtractor.extract_summary(str(self.repo_root)))
-        buffer.append("```\n")
+        if not opts.get("no_git"):
+            git_mode = "full" if opts.get("all_commits") else "compact"
+            buffer.append("Git Context & Branch Topology:\n")
+            buffer.append("```log")
+            buffer.append(GitGraphExtractor.extract_summary(str(self.repo_root), mode=git_mode))
+            buffer.append("```\n")
 
         # 3. File Ingestion & Compacting
         for target_rel in targets:
@@ -366,34 +401,31 @@ class CogEngine:
             buffer.append("```\n")
 
         final_output = "\n".join(buffer)
+        self._finalize_output(final_output, raw_total_bytes, output_file, opts)
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(final_output)
-
-        TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
-
-    def generate_sliced_context(self, allowed_domains: Set[str], slice_name: str):
+    def generate_sliced_context(self, allowed_domains: Set[str], slice_name: str, opts: Optional[Dict[str, any]] = None):
         """Generates a domain-specific sliced context payload."""
+        opts = opts or {}
         targets, _ = self.parse_config()
         output_file = self.repo_root / "context" / f"{slice_name}_summary.txt"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
 
         buffer: List[str] = []
         raw_total_bytes = 0
 
         # 1. Environment Banner
-        toolchain_meta = self.extract_toolchain_metadata()
-        active_branch = (
-            GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
-            or "HEAD (detached)"
-        )
-        active_sha = (
-            GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
-            or "unknown"
-        )
-        buffer.append(
-            self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
-        )
+        if not opts.get("no_banner"):
+            toolchain_meta = self.extract_toolchain_metadata()
+            active_branch = (
+                GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
+                or "HEAD (detached)"
+            )
+            active_sha = (
+                GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
+                or "unknown"
+            )
+            buffer.append(
+                self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
+            )
 
         matched_files_count = 0
 
@@ -406,7 +438,6 @@ class CogEngine:
             ext = target_path.suffix.lower()
             file_domain = self.EXTENSION_DOMAIN_MAP.get(ext, "other")
 
-            # Check if file matches target slice domain
             if file_domain not in allowed_domains:
                 continue
 
@@ -428,12 +459,10 @@ class CogEngine:
             return
 
         final_output = "\n".join(buffer)
+        if not opts.get("to_stdout"):
+            print(f"  • Slice Category    : [{slice_name.upper()}] ({matched_files_count} files)")
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(final_output)
-
-        print(f"  • Slice Category    : [{slice_name.upper()}] ({matched_files_count} files)")
-        TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
+        self._finalize_output(final_output, raw_total_bytes, output_file, opts)
 
     def handle_init(self, args: List[str]):
         """Executes repository onboarding & configuration scaffolding."""
@@ -508,25 +537,25 @@ class CogEngine:
         doctor = DiagnosticDoctor(self)
         doctor.print_diagnostic_report()
 
-    def handle_git(self, mode: str = "compact", args: Optional[List[str]] = None):
+    def handle_git(self, mode: str = "compact", args: Optional[List[str]] = None, opts: Optional[Dict[str, any]] = None):
         """Generates a standalone Git topology context payload."""
-        args = args or []
+        opts = opts or {}
         output_file = self.repo_root / "context" / f"git_{mode}_summary.txt"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
 
         buffer: List[str] = []
-        toolchain_meta = self.extract_toolchain_metadata()
-        active_branch = (
-            GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
-            or "HEAD (detached)"
-        )
-        active_sha = (
-            GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
-            or "unknown"
-        )
-        buffer.append(
-            self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
-        )
+        if not opts.get("no_banner"):
+            toolchain_meta = self.extract_toolchain_metadata()
+            active_branch = (
+                GitGraphExtractor._run_git(["branch", "--show-current"], cwd=str(self.repo_root))
+                or "HEAD (detached)"
+            )
+            active_sha = (
+                GitGraphExtractor._run_git(["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root))
+                or "unknown"
+            )
+            buffer.append(
+                self.format_environment_banner(toolchain_meta, git_branch=active_branch, git_sha=active_sha)
+            )
 
         git_summary = GitGraphExtractor.extract_summary(str(self.repo_root), mode=mode)
         raw_total_bytes = len(git_summary.encode("utf-8"))
@@ -537,86 +566,104 @@ class CogEngine:
         buffer.append("```\n")
 
         final_output = "\n".join(buffer)
+        self._finalize_output(final_output, raw_total_bytes, output_file, opts)
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(final_output)
-
-        TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
-
-    def handle_diff(self, args: Optional[List[str]] = None):
+    def handle_diff(self, args: Optional[List[str]] = None, opts: Optional[Dict[str, any]] = None):
         """Generates working-tree diff and modified files context payload."""
+        opts = opts or {}
         output_file = self.repo_root / "context" / "diff_summary.txt"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
 
         final_output, raw_bytes = DiffSlicer.generate_diff_context(self)
+        self._finalize_output(final_output, raw_bytes, output_file, opts)
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(final_output)
-
-        TokenMeter.print_report(raw_bytes, final_output, str(output_file))
-
-    def handle_pr(self, args: Optional[List[str]] = None):
+    def handle_pr(self, args: Optional[List[str]] = None, opts: Optional[Dict[str, any]] = None):
         """Generates Pull Request review context comparing feature branch against base."""
+        opts = opts or {}
         args = args or []
         base_branch_arg = args[0] if args else None
 
         output_file = self.repo_root / "context" / "pr_review_summary.txt"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
 
         final_output, raw_bytes, resolved_base = DiffSlicer.generate_pr_context(
             self, target_base=base_branch_arg
         )
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(final_output)
+        if not opts.get("to_stdout"):
+            print(f"  • Base Branch       : {resolved_base}")
 
-        print(f"  • Base Branch       : {resolved_base}")
-        TokenMeter.print_report(raw_bytes, final_output, str(output_file))
+        self._finalize_output(final_output, raw_bytes, output_file, opts)
 
     def dispatch(self, args: list):
         """CLI Command & Option Dispatcher."""
         filtered_args = []
-        custom_config: Optional[Path] = None
+        opts = {
+            "output_override": None,
+            "to_clipboard": False,
+            "to_stdout": False,
+            "no_banner": False,
+            "no_git": False,
+            "all_commits": False,
+        }
 
         i = 0
         while i < len(args):
             arg = args[i]
+            # Flag parsing
             if arg in ("--config", "-C") and i + 1 < len(args):
-                custom_config = Path(args[i + 1])
+                self.config_file = self._resolve_config_path(Path(args[i + 1]))
                 i += 2
             elif arg.startswith("--config="):
-                custom_config = Path(arg.split("=", 1)[1])
+                self.config_file = self._resolve_config_path(Path(arg.split("=", 1)[1]))
+                i += 1
+            elif arg in ("--out", "-o") and i + 1 < len(args):
+                opts["output_override"] = Path(args[i + 1])
+                i += 2
+            elif arg.startswith("--out="):
+                opts["output_override"] = Path(arg.split("=", 1)[1])
+                i += 1
+            elif arg in ("--clip", "-c"):
+                opts["to_clipboard"] = True
+                i += 1
+            elif arg in ("--stdout", "-s"):
+                opts["to_stdout"] = True
+                i += 1
+            elif arg == "--no-banner":
+                opts["no_banner"] = True
+                i += 1
+            elif arg == "--no-git":
+                opts["no_git"] = True
+                i += 1
+            elif arg == "--all-commits":
+                opts["all_commits"] = True
                 i += 1
             else:
                 filtered_args.append(arg)
                 i += 1
 
-        if custom_config:
-            self.config_file = self._resolve_config_path(custom_config)
-
         subcommand = filtered_args[0].lower() if filtered_args else "full"
+        sub_args = filtered_args[1:]
 
         if subcommand in ("init", "setup"):
-            self.handle_init(filtered_args[1:])
+            self.handle_init(sub_args)
         elif subcommand in ("update", "sync"):
-            self.handle_update(filtered_args[1:])
+            self.handle_update(sub_args)
         elif subcommand in ("check", "doctor"):
-            self.handle_check(filtered_args[1:])
+            self.handle_check(sub_args)
         elif subcommand in ("git", "git:compact", "git_compact"):
-            self.handle_git(mode="compact", args=filtered_args[1:])
+            self.handle_git(mode="compact", args=sub_args, opts=opts)
         elif subcommand in ("git:full", "git_full", "git:all"):
-            self.handle_git(mode="full", args=filtered_args[1:])
+            self.handle_git(mode="full", args=sub_args, opts=opts)
         elif subcommand in ("diff", "changes", "staged"):
-            self.handle_diff(filtered_args[1:])
+            self.handle_diff(args=sub_args, opts=opts)
         elif subcommand in ("pr", "review"):
-            self.handle_pr(filtered_args[1:])
+            self.handle_pr(args=sub_args, opts=opts)
         elif subcommand in self.DOMAIN_ALIASES:
             allowed_domains = self.DOMAIN_ALIASES[subcommand]
-            self.generate_sliced_context(allowed_domains, slice_name=subcommand)
+            self.generate_sliced_context(allowed_domains, slice_name=subcommand, opts=opts)
         elif subcommand in ("full", "all"):
-            self.generate_full_context()
+            self.generate_full_context(opts=opts)
         else:
-            self.generate_full_context()
+            self.generate_full_context(opts=opts)
 
 
 if __name__ == "__main__":
