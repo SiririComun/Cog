@@ -18,6 +18,7 @@ from code_minifier import CodeMinifier
 from git_graph import GitGraphExtractor
 from ipynb_clean import NotebookCleaner
 from token_meter import TokenMeter
+from xdc_clean import XdcCleaner
 
 
 class DiagnosticDoctor:
@@ -114,12 +115,12 @@ class DiagnosticDoctor:
                 elif ext == ".ipynb":
                     processed = NotebookCleaner.clean_notebook(raw_text)
                     cat = "Notebooks"
+                elif ext == ".xdc":
+                    processed = XdcCleaner.clean_xdc(raw_text)
+                    cat = "Constraints"
                 elif ext in (".vhd", ".vhdl", ".v", ".sv"):
                     processed = CodeMinifier.minify(raw_text, ext)
                     cat = "Hardware (RTL)"
-                elif ext == ".xdc":
-                    processed = CodeMinifier.minify(raw_text, ext)
-                    cat = "Constraints"
                 else:
                     processed = CodeMinifier.minify(raw_text, ext)
                     cat = "Software / Docs"
