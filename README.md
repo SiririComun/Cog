@@ -5,7 +5,7 @@
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Standard%20Library)-brightgreen.svg)]()
 [![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)]()
 [![Git Submodule Pattern](https://img.shields.io/badge/Pattern-Git%20Submodule-blueviolet.svg)]()
-[![Release](https://img.shields.io/badge/Release-v0.1.0-orange.svg)](https://github.com/SiririComun/Cog/releases)
+[![Release](https://img.shields.io/badge/Release-v1.0.0-orange.svg)](https://github.com/SiririComun/Cog/releases)
 
 > **High-density, token-optimized codebase context distillation for LLMs and AI-assisted engineering.**
 
