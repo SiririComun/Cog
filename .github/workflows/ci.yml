@@ -1,19 +1,23 @@
-name: Cog Engine CI & Validation
+name: Cog Engine CI & Cross-Platform Validation
 
 on:
   push:
     branches:
       - main
+      - 'feature/**'
+      - 'fix/**'
   pull_request:
     branches:
       - main
 
 jobs:
-  test-engine:
-    name: Verify Engine (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+  test-matrix:
+    name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
 
     steps:
@@ -27,23 +31,62 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Run Cog Self-Test
+      - name: Run Automated Unit & Regression Tests
+        run: |
+          python -m unittest discover -s tests -v
+
+      - name: Validate CLI Workflows & Subcommands (POSIX)
+        if: runner.os != 'Windows'
         run: |
           chmod +x Ctx
-          
-          # Create temporary test config
-          echo "OUTPUT: test_summary.txt" > cog.conf
-          echo "README.md" >> cog.conf
-          echo "LICENSE" >> cog.conf
-          
-          # Run Ctx
+
+          # 1. Test Project Initialization & Scaffolding
+          ./Ctx init --force
+          test -f context/conf/cog.conf
+          test -f context/conf/cog.ignore
+
+          # 2. Test Doctor Diagnostics
+          ./Ctx doctor
+
+          # 3. Test Full Context Generation
           ./Ctx
-          
-          # Verify output exists and is non-empty
-          if [ ! -s "test_summary.txt" ]; then
-            echo "❌ ERROR: Cog failed to generate output!" >&2
-            exit 1
-          fi
-          
-          echo "✅ Cog self-test passed on Python ${{ matrix.python-version }}!"
-          rm -f cog.conf test_summary.txt
+
+          # 4. Test Modular Domain Slices
+          ./Ctx sw
+          ./Ctx docs
+          ./Ctx hld
+
+          # 5. Test Git & Diff Slicers
+          ./Ctx git
+          ./Ctx git:full
+          ./Ctx diff
+          ./Ctx pr main
+
+          # 6. Test Output Override & Modifiers
+          ./Ctx --no-banner --no-git -o context/custom_ci_summary.txt
+          test -s context/custom_ci_summary.txt
+
+          echo "✅ All POSIX CLI subcommands executed successfully!"
+
+      - name: Validate CLI Workflows & Subcommands (Windows CMD / Module)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          :: 1. Test Scaffolding
+          python core\__main__.py init --force
+
+          :: 2. Test Doctor
+          python core\__main__.py doctor
+
+          :: 3. Test Full Context
+          python core\__main__.py
+
+          :: 4. Test Slices & Git
+          python core\__main__.py sw
+          python core\__main__.py git
+          python core\__main__.py diff
+
+          :: 5. Test Windows CMD Wrapper
+          call Ctx.cmd check
+
+          echo "✅ All Windows CLI subcommands executed successfully!"
