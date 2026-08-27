@@ -22,6 +22,7 @@ from git_graph import GitGraphExtractor
 from ipynb_clean import NotebookCleaner
 from token_meter import TokenMeter
 from ignore_matcher import IgnoreFilter
+from scaffold import ConfigScaffolder
 
 
 class CogEngine:
@@ -343,9 +344,39 @@ class CogEngine:
 
         TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
 
+    def handle_init(self, args: List[str]):
+        """Executes the automated repository onboarding & configuration scaffolding."""
+        force = any(flag in args for flag in ("--force", "-f"))
+        scaffolder = ConfigScaffolder(self.repo_root)
+        success, conf_path, ignore_path, scan_results = scaffolder.scaffold(force=force)
+
+        if not success:
+            print("\n⚠️  [Cog WARNING] Configuration already exists:")
+            print(f"   • {conf_path}")
+            print("\nUse './Cog/Ctx init --force' to overwrite existing configuration.\n")
+            return
+
+        total_files = sum(len(f) for f in scan_results.values())
+
+        print("\n" + "=" * 68)
+        print("  🎉 COG PROJECT INITIALIZATION COMPLETE")
+        print("=" * 68)
+        print(f"  • Configuration     : {conf_path}")
+        print(f"  • Ignore Rules      : {ignore_path}")
+        print(f"  • Total Discovered  : {total_files} files classified across domains")
+        print("=" * 68)
+
+        for domain, files in scan_results.items():
+            if files:
+                print(f"  📂 [{domain.upper()}]: {len(files)} files")
+
+        print("=" * 68)
+        print("  👉 Next Step: Review your 'context/conf/cog.conf' and run:")
+        print("     ./Cog/Ctx")
+        print("=" * 68 + "\n")
+    
     def dispatch(self, args: list):
         """CLI Command & Option Dispatcher."""
-        # Process custom config flags (--config <path> or -C <path>)
         filtered_args = []
         custom_config: Optional[Path] = None
 
@@ -365,9 +396,11 @@ class CogEngine:
         if custom_config:
             self.config_file = self._resolve_config_path(custom_config)
 
-        command = filtered_args[0].upper() if filtered_args else "FULL"
+        subcommand = filtered_args[0].lower() if filtered_args else "full"
 
-        if command in ("FULL", "ALL"):
+        if subcommand in ("init", "setup"):
+            self.handle_init(filtered_args[1:])
+        elif subcommand in ("full", "all"):
             self.generate_full_context()
         else:
             self.generate_full_context()
