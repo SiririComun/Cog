@@ -10,6 +10,10 @@ on:
     branches:
       - main
 
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
 jobs:
   test-matrix:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
@@ -20,7 +24,6 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
         exclude:
-          # Python 3.8 is unsupported on macOS ARM64 runners
           - os: macos-latest
             python-version: '3.8'
 
@@ -73,10 +76,13 @@ jobs:
 
           echo "✅ All POSIX CLI subcommands executed successfully!"
 
-      - name: Validate CLI Workflows & Subcommands (Windows CMD / Module)
+      - name: Validate CLI Workflows & Subcommands (Windows CMD)
         if: runner.os == 'Windows'
         shell: cmd
         run: |
+          :: Set UTF-8 codepage in runner
+          chcp 65001 >nul
+
           :: 1. Test Scaffolding
           python core\__main__.py init --force
 

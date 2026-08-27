@@ -5,11 +5,10 @@ rem Usage: .\Cog\Ctx.cmd [COMMAND] [OPTIONS]
 rem ==============================================================================
 
 setlocal enabledelayedexpansion
+chcp 65001 >nul 2>nul
 
-rem Determine the directory where this script resides
 set "SCRIPT_DIR=%~dp0"
 
-rem Search for python / python3 binary on PATH
 where python >nul 2>nul
 if %ERRORLEVEL% equ 0 (
     set "PYTHON_BIN=python"

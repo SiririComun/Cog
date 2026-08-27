@@ -8,6 +8,13 @@ import json
 import os
 import re
 import sys
+# Force UTF-8 console output on Windows to support emojis cleanly
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
