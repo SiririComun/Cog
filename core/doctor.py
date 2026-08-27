@@ -19,6 +19,7 @@ from git_graph import GitGraphExtractor
 from ipynb_clean import NotebookCleaner
 from token_meter import TokenMeter
 from xdc_clean import XdcCleaner
+from tcl_clean import TclCleaner
 
 
 class DiagnosticDoctor:

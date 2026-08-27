@@ -25,6 +25,7 @@ from ignore_matcher import IgnoreFilter
 from scaffold import ConfigScaffolder
 from doctor import DiagnosticDoctor
 from xdc_clean import XdcCleaner
+from tcl_clean import TclCleaner
 
 
 class CogEngine:
@@ -332,6 +333,8 @@ class CogEngine:
                 processed_text = NotebookCleaner.clean_notebook(raw_text)
             elif ext == ".xdc":
                 processed_text = XdcCleaner.clean_xdc(raw_text)
+            elif ext == ".tcl":
+                processed_text = TclCleaner.clean_tcl(raw_text)
             else:
                 processed_text = CodeMinifier.minify(raw_text, ext)
 
@@ -347,7 +350,7 @@ class CogEngine:
             f.write(final_output)
 
         TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
-        
+
     def handle_init(self, args: List[str]):
         """Executes the automated repository onboarding & configuration scaffolding."""
         force = any(flag in args for flag in ("--force", "-f"))
