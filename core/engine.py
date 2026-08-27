@@ -27,7 +27,7 @@ from doctor import DiagnosticDoctor
 from xdc_clean import XdcCleaner
 from tcl_clean import TclCleaner
 from c_slicer import CSlicer
-
+from diff_slicer import DiffSlicer
 
 class CogEngine:
     SYNTAX_MAP = {
@@ -384,11 +384,8 @@ class CogEngine:
         print("  👉 Next Step: Review your 'context/conf/cog.conf' and run:")
         print("     ./Cog/Ctx")
         print("=" * 68 + "\n")
-    
-    def handle_check(self, args: List[str]):
-        """Executes repository diagnostics and token health checks."""
-        doctor = DiagnosticDoctor(self)
-        doctor.print_diagnostic_report()
+
+    def handle_update(self, args: List[str]):
         """Non-destructively synchronizes existing configuration with new repository files."""
         scaffolder = ConfigScaffolder(self.repo_root)
         success, conf_path, newly_added, missing = scaffolder.update(self.config_file)
@@ -424,6 +421,88 @@ class CogEngine:
             print("=" * 68)
 
         print("  👉 Ready to generate context: run './Cog/Ctx'\n")
+    
+    def handle_check(self, args: List[str]):
+        """Executes repository diagnostics and token health checks."""
+        doctor = DiagnosticDoctor(self)
+        doctor.print_diagnostic_report()
+
+    def handle_git(self, mode: str = "compact", args: Optional[List[str]] = None):
+        """Generates a standalone Git topology context payload."""
+        args = args or []
+        output_file = self.repo_root / "context" / f"git_{mode}_summary.txt"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        buffer: List[str] = []
+        raw_total_bytes = 0
+
+        # 1. Environment Banner
+        toolchain_meta = self.extract_toolchain_metadata()
+        active_branch = (
+            GitGraphExtractor._run_git(
+                ["branch", "--show-current"], cwd=str(self.repo_root)
+            )
+            or "HEAD (detached)"
+        )
+        active_sha = (
+            GitGraphExtractor._run_git(
+                ["rev-parse", "--short", "HEAD"], cwd=str(self.repo_root)
+            )
+            or "unknown"
+        )
+        buffer.append(
+            self.format_environment_banner(
+                toolchain_meta, git_branch=active_branch, git_sha=active_sha
+            )
+        )
+
+        # 2. Multi-Branch Git Topology
+        git_summary = GitGraphExtractor.extract_summary(
+            str(self.repo_root), mode=mode
+        )
+        raw_total_bytes = len(git_summary.encode("utf-8"))
+
+        buffer.append("Git Context & Branch Topology:\n")
+        buffer.append("```log")
+        buffer.append(git_summary)
+        buffer.append("```\n")
+
+        final_output = "\n".join(buffer)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(final_output)
+
+        TokenMeter.print_report(raw_total_bytes, final_output, str(output_file))
+
+    def handle_diff(self, args: Optional[List[str]] = None):
+        """Generates a working-tree diff and modified files context payload."""
+        output_file = self.repo_root / "context" / "diff_summary.txt"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        final_output, raw_bytes = DiffSlicer.generate_diff_context(self)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(final_output)
+
+        TokenMeter.print_report(raw_bytes, final_output, str(output_file))
+
+    def handle_pr(self, args: Optional[List[str]] = None):
+        """Generates a Pull Request review context comparing feature branch against base."""
+        args = args or []
+        base_branch_arg = args[0] if args else None
+
+        output_file = self.repo_root / "context" / "pr_review_summary.txt"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        final_output, raw_bytes, resolved_base = DiffSlicer.generate_pr_context(
+            self, target_base=base_branch_arg
+        )
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(final_output)
+
+        print(f"  • Base Branch       : {resolved_base}")
+        TokenMeter.print_report(raw_bytes, final_output, str(output_file))
 
     def dispatch(self, args: list):
         """CLI Command & Option Dispatcher."""
@@ -454,11 +533,18 @@ class CogEngine:
             self.handle_update(filtered_args[1:])
         elif subcommand in ("check", "doctor"):
             self.handle_check(filtered_args[1:])
+        elif subcommand in ("git", "git:compact", "git_compact"):
+            self.handle_git(mode="compact", args=filtered_args[1:])
+        elif subcommand in ("git:full", "git_full", "git:all"):
+            self.handle_git(mode="full", args=filtered_args[1:])
+        elif subcommand in ("diff", "changes", "staged"):
+            self.handle_diff(filtered_args[1:])
+        elif subcommand in ("pr", "review"):
+            self.handle_pr(filtered_args[1:])
         elif subcommand in ("full", "all"):
             self.generate_full_context()
         else:
             self.generate_full_context()
-
 
 if __name__ == "__main__":
     target_repo = Path.cwd()
