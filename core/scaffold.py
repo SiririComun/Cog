@@ -29,9 +29,11 @@ class ConfigScaffolder:
 # Syntax follows standard .gitignore format (*, **, ?, leading/trailing slashes).
 # ==============================================================================
 
-# Git & Cog internals
+# Git & Submodules (Exclude frameworks and Cog internals)
 .git/
 .cog/
+Cog/
+Hog/
 
 # Vivado / Vitis / EDA Compilation & Simulation Artifacts
 **/.runs/

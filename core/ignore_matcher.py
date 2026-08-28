@@ -14,16 +14,21 @@ from typing import List, Optional, Set, Tuple
 class IgnoreFilter:
     """
     Evaluates relative file paths against default EDA exclusions,
-    repository .gitignore rules, and user-defined cog.ignore files.
+    submodule boundaries (.gitmodules), repository .gitignore rules,
+    and user-defined cog.ignore files.
     """
 
-    # Built-in EDA, hardware build artifact, and software noise defaults
+    # Built-in EDA, submodule, hardware build artifact, and software noise defaults
     DEFAULT_IGNORE_PATTERNS = [
-        # Git & Cog internal
+        # Git & Submodules
         ".git",
         ".git/**",
         ".cog",
         ".cog/**",
+        "Cog",
+        "Cog/**",
+        "Hog",
+        "Hog/**",
         # Vivado / EDA Artifacts & Logs
         "**/.runs/**",
         "**/.cache/**",
@@ -76,19 +81,42 @@ class IgnoreFilter:
         self.raw_patterns: List[str] = list(self.DEFAULT_IGNORE_PATTERNS)
         self.compiled_rules: List[Tuple[re.Pattern, bool]] = []  # (regex, is_negation)
 
-        # 1. Load .gitignore if present
+        # 1. Automatically parse .gitmodules to exclude all submodule paths
+        self._load_gitmodules_rules()
+
+        # 2. Load .gitignore if present
         if use_gitignore:
             gitignore_file = self.repo_root / ".gitignore"
             if gitignore_file.is_file():
                 self._load_file_rules(gitignore_file)
 
-        # 2. Resolve and load cog.ignore
+        # 3. Resolve and load cog.ignore
         ignore_file = self._resolve_ignore_path(custom_ignore_path)
         if ignore_file and ignore_file.is_file():
             self._load_file_rules(ignore_file)
 
-        # 3. Compile all patterns to regex
+        # 4. Compile all patterns to regex
         self._compile_patterns()
+
+    def _load_gitmodules_rules(self):
+        """Auto-detects and ignores all submodules declared in .gitmodules."""
+        gitmodules_file = self.repo_root / ".gitmodules"
+        if not gitmodules_file.is_file():
+            return
+
+        try:
+            with open(gitmodules_file, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+
+            # Find all path = <submodule_path> entries
+            submodule_paths = re.findall(r"^\s*path\s*=\s*(.+)$", content, re.MULTILINE)
+            for sub_path in submodule_paths:
+                clean_path = sub_path.strip().strip("'\"")
+                if clean_path:
+                    self.raw_patterns.append(clean_path)
+                    self.raw_patterns.append(f"{clean_path}/**")
+        except Exception:
+            pass
 
     def _resolve_ignore_path(self, custom_path: Optional[Path] = None) -> Optional[Path]:
         """Resolves the location of the cog.ignore file."""
