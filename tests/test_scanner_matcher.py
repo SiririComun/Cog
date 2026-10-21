@@ -16,11 +16,34 @@ class TestScannerAndIgnoreMatcher(unittest.TestCase):
             root = Path(tmpdir)
             filter_engine = IgnoreFilter(root)
 
+            # EDA & Python Artifacts
             self.assertTrue(filter_engine.is_ignored(Path(".runs/synth_1/runme.log")))
             self.assertTrue(filter_engine.is_ignored(Path("src/__pycache__/core.cpython-310.pyc")))
             self.assertTrue(filter_engine.is_ignored(Path("vivado.jou")))
             self.assertTrue(filter_engine.is_ignored(Path("output.bit")))
             self.assertFalse(filter_engine.is_ignored(Path("src/hdl/top.vhd")))
+
+            # LaTeX Build Artifacts
+            self.assertTrue(filter_engine.is_ignored(Path("main.aux")))
+            self.assertTrue(filter_engine.is_ignored(Path("main.bbl")))
+            self.assertTrue(filter_engine.is_ignored(Path("main.blg")))
+            self.assertTrue(filter_engine.is_ignored(Path("main.fls")))
+            self.assertTrue(filter_engine.is_ignored(Path("main.fdb_latexmk")))
+            self.assertTrue(filter_engine.is_ignored(Path("main.synctex.gz")))
+            self.assertTrue(filter_engine.is_ignored(Path("main.toc")))
+            self.assertTrue(filter_engine.is_ignored(Path("main.out")))
+
+            # Binary Graphics & Compiled PDFs
+            self.assertTrue(filter_engine.is_ignored(Path("main.pdf")))
+            self.assertTrue(filter_engine.is_ignored(Path("resumen_walo.pdf")))
+            self.assertTrue(filter_engine.is_ignored(Path("figures/exp01_fig1.png")))
+            self.assertTrue(filter_engine.is_ignored(Path("figures/logo.jpg")))
+
+            # LaTeX Source Files (Must NOT be ignored)
+            self.assertFalse(filter_engine.is_ignored(Path("chapters/01_tratamiento.tex")))
+            self.assertFalse(filter_engine.is_ignored(Path("figures/fig1_discretizacion.tex")))
+            self.assertFalse(filter_engine.is_ignored(Path("references.bib")))
+            self.assertFalse(filter_engine.is_ignored(Path("preamble.tex")))
 
     def test_scanner_domain_classification(self):
         with tempfile.TemporaryDirectory() as tmpdir:

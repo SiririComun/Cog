@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Cog: Ignore Pattern Engine (ignore_matcher.py)
-Filters files and directories against default EDA/Python noise,
-repository .gitignore rules, and Cog-specific cog.ignore files.
+Filters files and directories against default EDA/Python/LaTeX noise,
+submodule boundaries (.gitmodules), repository .gitignore rules,
+and user-defined cog.ignore files.
 """
 
 import os
@@ -13,12 +14,12 @@ from typing import List, Optional, Set, Tuple
 
 class IgnoreFilter:
     """
-    Evaluates relative file paths against default EDA exclusions,
+    Evaluates relative file paths against default EDA/LaTeX exclusions,
     submodule boundaries (.gitmodules), repository .gitignore rules,
     and user-defined cog.ignore files.
     """
 
-    # Built-in EDA, submodule, hardware build artifact, and software noise defaults
+    # Built-in EDA, submodule, hardware build artifact, LaTeX cache, and software noise defaults
     DEFAULT_IGNORE_PATTERNS = [
         # Git & Submodules
         ".git",
@@ -59,6 +60,35 @@ class IgnoreFilter:
         "**/*.so",
         "**/*.dylib",
         "**/*.dll",
+        # LaTeX, TeX & BibTeX Compilation Artifacts & Logs
+        "**/*.aux",
+        "**/*.bbl",
+        "**/*.blg",
+        "**/*.fdb_latexmk",
+        "**/*.fls",
+        "**/*.synctex.gz",
+        "**/*.toc",
+        "**/*.lot",
+        "**/*.lof",
+        "**/*.nav",
+        "**/*.snm",
+        "**/*.vrb",
+        "**/*.run.xml",
+        "**/*.bcf",
+        "**/*.dvi",
+        "**/*.idx",
+        "**/*.ind",
+        "**/*.ilg",
+        "**/*.out",
+        # Compiled PDFs & Binary Media Assets
+        "**/*.pdf",
+        "**/*.png",
+        "**/*.jpg",
+        "**/*.jpeg",
+        "**/*.gif",
+        "**/*.bmp",
+        "**/*.tiff",
+        "**/*.ico",
         # OS Noise
         "**/.DS_Store",
         "**/Thumbs.db",

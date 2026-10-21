@@ -67,6 +67,37 @@ build/
 **/*.dylib
 **/*.dll
 
+# LaTeX, TeX & BibTeX Compilation Artifacts
+**/*.aux
+**/*.bbl
+**/*.blg
+**/*.fdb_latexmk
+**/*.fls
+**/*.synctex.gz
+**/*.toc
+**/*.lot
+**/*.lof
+**/*.nav
+**/*.snm
+**/*.vrb
+**/*.run.xml
+**/*.bcf
+**/*.dvi
+**/*.idx
+**/*.ind
+**/*.ilg
+**/*.out
+
+# Compiled Output Documents & Binary Media Assets
+**/*.pdf
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.bmp
+**/*.tiff
+**/*.ico
+
 # OS Metadata
 .DS_Store
 Thumbs.db
