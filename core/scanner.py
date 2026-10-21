@@ -2,7 +2,7 @@
 """
 Cog: Repository Artifact Scanner (scanner.py)
 Traverses codebase trees, prunes noise via IgnoreFilter, and classifies
-hardware, software, build scripts, and documentation files into domain buckets.
+hardware, software, manuscripts (LaTeX/BibTeX), build scripts, and documentation files into domain buckets.
 """
 
 import sys
@@ -19,7 +19,7 @@ from ignore_matcher import IgnoreFilter
 
 class RepoScanner:
     """
-    Scans a repository tree and categorizes files into functional engineering domains.
+    Scans a repository tree and categorizes files into functional engineering and manuscript domains.
     """
 
     # Primary extension mappings
@@ -30,6 +30,7 @@ class RepoScanner:
     SOFTWARE_EXTS = {".py", ".c", ".h", ".cpp", ".hpp", ".sh"}
     BUILD_EXTS = {".tcl", ".mk", ".src", ".con", ".sub", ".ext"}
     DOC_EXTS = {".md", ".rst"}
+    MANUSCRIPT_EXTS = {".tex", ".bib", ".sty", ".cls"}
 
     # Special exact filenames mapped directly to domains
     BUILD_FILENAMES = {"makefile", "cmakelists.txt", "hog.conf"}
@@ -59,16 +60,18 @@ class RepoScanner:
     def scan(self) -> Dict[str, List[str]]:
         """
         Scans the repository and returns files grouped by domain:
-        - 'bd'           : Vivado Block Designs
-        - 'rtl'          : VHDL, Verilog, SystemVerilog cores
-        - 'constraints'  : Vivado .xdc constraint files
-        - 'build'        : Hog configs, TCL automation, Makefiles
-        - 'software'     : Python drivers, C/C++ libraries, scripts
-        - 'notebooks'    : Jupyter Notebook tutorials
         - 'documentation': Markdown docs, LICENSE, README
+        - 'manuscript'   : LaTeX chapters, preambles, TikZ figures, BibTeX (.tex, .bib, .sty, .cls)
+        - 'build'        : Hog configs, TCL automation, Makefiles
+        - 'bd'           : Vivado Block Designs
+        - 'constraints'  : Vivado .xdc constraint files
+        - 'rtl'          : VHDL, Verilog, SystemVerilog cores
+        - 'software'     : Python drivers/scripts, C/C++ libraries
+        - 'notebooks'    : Jupyter Notebook tutorials
         """
         categorized: Dict[str, List[str]] = {
             "documentation": [],
+            "manuscript": [],
             "build": [],
             "bd": [],
             "constraints": [],
@@ -95,23 +98,28 @@ class RepoScanner:
                 fname_lower = filename.lower()
                 rel_posix = rel_path.as_posix()
 
-                # Rule 1: Vivado Block Designs
+                # Rule 1: LaTeX Manuscripts, Chapters, Figures & Bibliographies
+                if ext in self.MANUSCRIPT_EXTS:
+                    categorized["manuscript"].append(rel_posix)
+                    continue
+
+                # Rule 2: Vivado Block Designs
                 if ext in self.BD_EXTS:
                     categorized["bd"].append(rel_posix)
                     discovered_bd_stems.add(stem)
                     continue
 
-                # Rule 2: Constraints
+                # Rule 3: Constraints
                 if ext in self.CONSTRAINTS_EXTS:
                     categorized["constraints"].append(rel_posix)
                     continue
 
-                # Rule 3: Jupyter Notebooks
+                # Rule 4: Jupyter Notebooks
                 if ext in self.NOTEBOOK_EXTS:
                     categorized["notebooks"].append(rel_posix)
                     continue
 
-                # Rule 4: Build automation & Hog configurations
+                # Rule 5: Build automation & Hog configurations
                 if (
                     ext in self.BUILD_EXTS
                     or fname_lower in self.BUILD_FILENAMES
@@ -120,17 +128,17 @@ class RepoScanner:
                     categorized["build"].append(rel_posix)
                     continue
 
-                # Rule 5: Root Documentation & Licenses
+                # Rule 6: Root Documentation & Licenses
                 if ext in self.DOC_EXTS or stem in self.DOC_FILENAMES:
                     categorized["documentation"].append(rel_posix)
                     continue
 
-                # Rule 6: Hardware RTL (Deferred to filter auto-generated wrappers)
+                # Rule 7: Hardware RTL (Deferred to filter auto-generated wrappers)
                 if ext in self.RTL_EXTS:
                     candidate_rtl_files.append(file_path)
                     continue
 
-                # Rule 7: Software, drivers & packaging
+                # Rule 8: Software, drivers, plotting scripts & packaging
                 if ext in self.SOFTWARE_EXTS or fname_lower in self.SOFTWARE_FILENAMES:
                     categorized["software"].append(rel_posix)
                     continue
@@ -150,12 +158,13 @@ class RepoScanner:
     def get_ordered_targets(self) -> List[str]:
         """
         Returns all categorized targets in logical architectural order:
-        Documentation -> Build -> Block Design -> Constraints -> RTL -> Software -> Notebooks.
+        Documentation -> Manuscript -> Build -> Block Design -> Constraints -> RTL -> Software -> Notebooks.
         """
         scan_results = self.scan()
         ordered: List[str] = []
         for section in (
             "documentation",
+            "manuscript",
             "build",
             "bd",
             "constraints",

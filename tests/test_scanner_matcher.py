@@ -49,7 +49,7 @@ class TestScannerAndIgnoreMatcher(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
 
-            # Create mock structure
+            # 1. Hardware RTL & BD Structure
             (root / "sources" / "rtl").mkdir(parents=True)
             (root / "sources" / "rtl" / "alu.vhd").touch()
 
@@ -61,17 +61,33 @@ class TestScannerAndIgnoreMatcher(unittest.TestCase):
             (root / "constraints").mkdir(parents=True)
             (root / "constraints" / "pins.xdc").touch()
 
+            # 2. Software / Drivers Structure
             (root / "drivers").mkdir(parents=True)
             (root / "drivers" / "overlay.py").touch()
+
+            # 3. LaTeX Manuscript Structure (thesis-walo pattern)
+            (root / "chapters").mkdir(parents=True)
+            (root / "chapters" / "01_tratamiento_campo.tex").touch()
+            (root / "figures").mkdir(parents=True)
+            (root / "figures" / "fig1_discretizacion.tex").touch()
+            (root / "references.bib").touch()
+            (root / "preamble.tex").touch()
 
             scanner = RepoScanner(root)
             results = scanner.scan()
 
+            # Hardware & Software assertions
             self.assertIn("sources/rtl/alu.vhd", results["rtl"])
             self.assertNotIn("vivado/bd/system_wrapper.vhd", results["rtl"])
             self.assertIn("vivado/bd/system.bd", results["bd"])
             self.assertIn("constraints/pins.xdc", results["constraints"])
             self.assertIn("drivers/overlay.py", results["software"])
+
+            # Manuscript assertions
+            self.assertIn("chapters/01_tratamiento_campo.tex", results["manuscript"])
+            self.assertIn("figures/fig1_discretizacion.tex", results["manuscript"])
+            self.assertIn("references.bib", results["manuscript"])
+            self.assertIn("preamble.tex", results["manuscript"])
 
 
 if __name__ == "__main__":
