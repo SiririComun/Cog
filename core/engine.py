@@ -34,6 +34,7 @@ from ignore_matcher import IgnoreFilter
 from ipynb_clean import NotebookCleaner
 from scaffold import ConfigScaffolder
 from tcl_clean import TclCleaner
+from tex_clean import TexCleaner
 from token_meter import TokenMeter
 from xdc_clean import XdcCleaner
 
@@ -65,6 +66,11 @@ class CogEngine:
         ".md": "markdown",
         ".rst": "rst",
         ".txt": "text",
+        ".tex": "latex",
+        ".sty": "latex",
+        ".cls": "latex",
+        ".bib": "bibtex",
+        ".csv": "csv",
     }
 
     EXTENSION_DOMAIN_MAP = {
@@ -90,6 +96,10 @@ class CogEngine:
         ".md": "documentation",
         ".rst": "documentation",
         ".txt": "documentation",
+        ".tex": "manuscript",
+        ".sty": "manuscript",
+        ".cls": "manuscript",
+        ".bib": "bib",
     }
 
     DOMAIN_ALIASES: Dict[str, Set[str]] = {
@@ -110,6 +120,12 @@ class CogEngine:
         "constraints": {"constraints"},
         "tcl": {"build"},
         "build": {"build"},
+        "tex": {"manuscript"},
+        "bib": {"bib"},
+        "latex": {"manuscript", "bib"},
+        "manuscript": {"manuscript", "bib"},
+        "paper": {"manuscript", "bib", "software"},
+        "thesis": {"manuscript", "bib", "software"},
         "hld": {"bd", "rtl", "software"},
         "app": {"software", "notebooks"},
     }
@@ -320,6 +336,10 @@ class CogEngine:
             return TclCleaner.clean_tcl(raw_text)
         elif ext in (".c", ".cpp", ".h", ".hpp"):
             return CSlicer.slice_c_cpp(raw_text, ext)
+        elif ext in (".tex", ".sty", ".cls"):
+            return TexCleaner.clean_tex(raw_text)
+        elif ext == ".bib":
+            return TexCleaner.clean_bib(raw_text)
         else:
             return CodeMinifier.minify(raw_text, ext)
 

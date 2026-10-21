@@ -14,13 +14,14 @@ if str(CORE_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_DIR))
 
 from bd_pruner import BlockDesignPruner
+from c_slicer import CSlicer
 from code_minifier import CodeMinifier
 from git_graph import GitGraphExtractor
 from ipynb_clean import NotebookCleaner
+from tcl_clean import TclCleaner
+from tex_clean import TexCleaner
 from token_meter import TokenMeter
 from xdc_clean import XdcCleaner
-from tcl_clean import TclCleaner
-from c_slicer import CSlicer
 
 
 class DiagnosticDoctor:
@@ -120,7 +121,7 @@ class DiagnosticDoctor:
                 elif ext == ".xdc":
                     processed = XdcCleaner.clean_xdc(raw_text)
                     cat = "Constraints"
-                elif ext == ".tcl":
+                elif ext in (".tcl", ".src", ".con", ".sub", ".ext"):
                     processed = TclCleaner.clean_tcl(raw_text)
                     cat = "Build (TCL)"
                 elif ext in (".c", ".cpp", ".h", ".hpp"):
@@ -129,6 +130,12 @@ class DiagnosticDoctor:
                 elif ext in (".vhd", ".vhdl", ".v", ".sv"):
                     processed = CodeMinifier.minify(raw_text, ext)
                     cat = "Hardware (RTL)"
+                elif ext in (".tex", ".sty", ".cls"):
+                    processed = TexCleaner.clean_tex(raw_text)
+                    cat = "Manuscript (TeX)"
+                elif ext == ".bib":
+                    processed = TexCleaner.clean_bib(raw_text)
+                    cat = "Manuscript (Bib)"
                 else:
                     processed = CodeMinifier.minify(raw_text, ext)
                     cat = "Software / Docs"

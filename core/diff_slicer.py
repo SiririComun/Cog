@@ -20,6 +20,7 @@ from code_minifier import CodeMinifier
 from git_graph import GitGraphExtractor
 from ipynb_clean import NotebookCleaner
 from tcl_clean import TclCleaner
+from tex_clean import TexCleaner
 from xdc_clean import XdcCleaner
 
 
@@ -48,13 +49,11 @@ class DiffSlicer:
     def resolve_base_branch(cls, repo_root: Path, target_base: Optional[str] = None) -> str:
         """Resolves target base branch with fallbacks for main/master/remotes."""
         if target_base:
-            # Check if provided branch exists
             if cls._run_git(["rev-parse", "--verify", target_base], cwd=str(repo_root)):
                 return target_base
             if cls._run_git(["rev-parse", "--verify", f"origin/{target_base}"], cwd=str(repo_root)):
                 return f"origin/{target_base}"
 
-        # Standard candidate fallbacks
         for candidate in ("main", "origin/main", "master", "origin/master"):
             if cls._run_git(["rev-parse", "--verify", candidate], cwd=str(repo_root)):
                 return candidate
@@ -84,6 +83,27 @@ class DiffSlicer:
                 modified.append(rel_path.as_posix())
 
         return list(dict.fromkeys(modified))
+
+    @classmethod
+    def _compact_target(cls, engine, target_path: Path, raw_text: str) -> str:
+        """Helper to apply specialized compactor to a modified file."""
+        ext = target_path.suffix.lower()
+        if ext == ".bd":
+            return BlockDesignPruner.prune_bd_json(raw_text)
+        elif ext == ".ipynb":
+            return NotebookCleaner.clean_notebook(raw_text)
+        elif ext == ".xdc":
+            return XdcCleaner.clean_xdc(raw_text)
+        elif ext in (".tcl", ".src", ".con", ".sub", ".ext"):
+            return TclCleaner.clean_tcl(raw_text)
+        elif ext in (".c", ".cpp", ".h", ".hpp"):
+            return CSlicer.slice_c_cpp(raw_text, ext)
+        elif ext in (".tex", ".sty", ".cls"):
+            return TexCleaner.clean_tex(raw_text)
+        elif ext == ".bib":
+            return TexCleaner.clean_bib(raw_text)
+        else:
+            return CodeMinifier.minify(raw_text, ext)
 
     @classmethod
     def generate_diff_context(cls, engine) -> Tuple[str, int]:
@@ -147,19 +167,7 @@ class DiffSlicer:
                 raw_total_bytes += len(raw_text.encode("utf-8"))
                 ext = target_path.suffix.lower()
                 syntax = engine.SYNTAX_MAP.get(ext, "text")
-
-                if ext == ".bd":
-                    processed_text = BlockDesignPruner.prune_bd_json(raw_text)
-                elif ext == ".ipynb":
-                    processed_text = NotebookCleaner.clean_notebook(raw_text)
-                elif ext == ".xdc":
-                    processed_text = XdcCleaner.clean_xdc(raw_text)
-                elif ext == ".tcl":
-                    processed_text = TclCleaner.clean_tcl(raw_text)
-                elif ext in (".c", ".cpp", ".h", ".hpp"):
-                    processed_text = CSlicer.slice_c_cpp(raw_text, ext)
-                else:
-                    processed_text = CodeMinifier.minify(raw_text, ext)
+                processed_text = cls._compact_target(engine, target_path, raw_text)
 
                 buffer.append(f"{target_path.name}: ({target_rel})\n")
                 buffer.append(f"```{syntax}")
@@ -250,19 +258,7 @@ class DiffSlicer:
                 raw_total_bytes += len(raw_text.encode("utf-8"))
                 ext = target_path.suffix.lower()
                 syntax = engine.SYNTAX_MAP.get(ext, "text")
-
-                if ext == ".bd":
-                    processed_text = BlockDesignPruner.prune_bd_json(raw_text)
-                elif ext == ".ipynb":
-                    processed_text = NotebookCleaner.clean_notebook(raw_text)
-                elif ext == ".xdc":
-                    processed_text = XdcCleaner.clean_xdc(raw_text)
-                elif ext == ".tcl":
-                    processed_text = TclCleaner.clean_tcl(raw_text)
-                elif ext in (".c", ".cpp", ".h", ".hpp"):
-                    processed_text = CSlicer.slice_c_cpp(raw_text, ext)
-                else:
-                    processed_text = CodeMinifier.minify(raw_text, ext)
+                processed_text = cls._compact_target(engine, target_path, raw_text)
 
                 buffer.append(f"{target_path.name}: ({target_rel})\n")
                 buffer.append(f"```{syntax}")
