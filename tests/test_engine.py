@@ -52,6 +52,24 @@ class TestEngineAndTokenMeter(unittest.TestCase):
             self.assertIn("src/test1.py", targets)
             self.assertIn("src/test2.py", targets)
 
+    def test_latex_domain_aliases_and_syntax(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        engine = CogEngine(repo_root)
+
+        # Domain aliases exist
+        self.assertIn("tex", engine.DOMAIN_ALIASES)
+        self.assertIn("bib", engine.DOMAIN_ALIASES)
+        self.assertIn("latex", engine.DOMAIN_ALIASES)
+        self.assertIn("manuscript", engine.DOMAIN_ALIASES)
+        self.assertIn("paper", engine.DOMAIN_ALIASES)
+        self.assertIn("thesis", engine.DOMAIN_ALIASES)
+
+        # Syntax mapping
+        self.assertEqual(engine.SYNTAX_MAP[".tex"], "latex")
+        self.assertEqual(engine.SYNTAX_MAP[".bib"], "bibtex")
+        self.assertEqual(engine.SYNTAX_MAP[".sty"], "latex")
+        self.assertEqual(engine.SYNTAX_MAP[".cls"], "latex")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -105,6 +105,7 @@ Thumbs.db
 
     SECTION_HEADERS = {
         "documentation": ("📄 Documentation & Project Manifests", "# Readme, licenses, and architecture docs"),
+        "manuscript": ("📚 Manuscript, LaTeX & Academic Sources", "# LaTeX chapters, TikZ figures, preambles, and BibTeX citations"),
         "build": ("⚙️  Build Systems, TCL & Project Scripts", "# Hog configs, build automation, Makefiles, TCL scripts"),
         "bd": ("🧩 Hardware - Vivado Block Designs (.bd)", "# Custom IP blocks, interconnects, and memory maps"),
         "constraints": ("📌 Hardware - Constraints (.xdc)", "# Timing constraints and physical I/O pin assignments"),
